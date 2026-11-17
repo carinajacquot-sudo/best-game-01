@@ -28,6 +28,13 @@ class Game {
     this.levels = new LevelManager();
     this.hud = new HUD();
 
+    this.cover = new Image();
+    this.cover.src = 'assets/ember-wing-cover.jpg';
+    this.coverLoaded = false;
+    this.cover.onload = () => { this.coverLoaded = true; };
+
+    this.popups = [];
+
     this.state = 'title'; // title, howto, play, levelclear, gameover, victory
     this.score = 0;
     this.combo = 1;
@@ -137,6 +144,20 @@ class Game {
       this.render();
       window.__shotReady = true;
     });
+    // Web fonts arrive asynchronously — actively load them, then repaint,
+    // so the first visible frame uses Monoton/Orbitron instead of fallbacks.
+    if (document.fonts && document.fonts.load) {
+      Promise.all([
+        document.fonts.load('112px Monoton', 'EMBER'),
+        document.fonts.load('54px Monoton', 'W I N G'),
+        document.fonts.load('50px Monoton', 'THE CITY REMEMBERS'),
+        document.fonts.load('700 21px Orbitron', 'SCORE'),
+        document.fonts.load('15px Orbitron', 'LEVEL'),
+      ]).then(() => {
+        this.render();
+        requestAnimationFrame(() => this.render());
+      }).catch(() => {});
+    }
   }
 
   resetGame() {
@@ -148,6 +169,7 @@ class Game {
     this.powerups = new PowerupManager();
     this.bullets = new BulletManager();
     this.particles = new ParticleManager();
+    this.popups = [];
     this.levels.reset();
   }
 
@@ -155,6 +177,28 @@ class Game {
     // Handle global inputs
     if (this.input.wasPressed('KeyM')) {
       this.audio.toggleMute();
+    }
+
+    // Update popups on any state
+    for (let pi = this.popups.length - 1; pi >= 0; pi--) {
+      this.popups[pi].t += dt;
+      if (this.popups[pi].t > 0.9) {
+        this.popups.splice(pi, 1);
+      }
+    }
+
+    // Title / Victory / Gameover rising embers (35% chance per frame)
+    if (this.state === 'title' || this.state === 'victory' || this.state === 'gameover') {
+      if (Math.random() < 0.35) {
+        const rx = Math.random() * 1280;
+        const rvx = (Math.random() - 0.5) * 0.5;
+        const rvy = - (0.6 + Math.random() * 0.9);
+        const colors = ['#ff7700', '#ffb300', '#00f0ff'];
+        const rcolor = colors[Math.floor(Math.random() * colors.length)];
+        const rsize = 1.4 + Math.random() * 1.8;
+        this.particles.spawn(rx, 742, rvx, rvy, rcolor, rsize, 2.4);
+      }
+      this.particles.update(dt);
     }
 
     if (this.state === 'title') {
@@ -223,7 +267,9 @@ class Game {
               this.levels.bossDefeated = true;
               this.audio.playBoom();
               this.particles.explosion(this.enemies.boss.x, this.enemies.boss.y, '#9d00ff', 50);
-              this.score += CONFIG.scoring.boss * this.combo;
+              const points = CONFIG.scoring.boss * this.combo;
+              this.score += points;
+              this.popups.push({ x: this.enemies.boss.x, y: this.enemies.boss.y, text: '+' + points, t: 0 });
               this.enemies.boss = null;
             }
             continue;
@@ -240,7 +286,9 @@ class Game {
               if (e.hp <= 0) {
                 this.audio.playBoom();
                 this.particles.explosion(e.x, e.y, e.type === 'tank' ? '#ff7700' : '#ff007f', 30);
-                this.score += e.scoreValue * this.combo;
+                const points = e.scoreValue * this.combo;
+                this.score += points;
+                this.popups.push({ x: e.x, y: e.y, text: '+' + points, t: 0 });
                 this.combo = Math.min(8, this.combo + 1);
                 this.comboTimer = 4.0;
 
@@ -326,7 +374,19 @@ class Game {
     if (this.state === 'play' || this.state === 'levelclear') {
       this.player.draw(this.ctx);
     }
-    this.hud.draw(this.ctx, this.state, this.player, this.score, this.combo, this.levels);
+    // Draw popups after entities
+    for (const p of this.popups) {
+      this.ctx.save();
+      this.ctx.font = '700 20px Orbitron';
+      this.ctx.fillStyle = '#ffd24a';
+      this.ctx.shadowColor = '#ff7700';
+      this.ctx.shadowBlur = 8;
+      this.ctx.globalAlpha = Math.max(0, 1 - p.t / 0.9);
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(p.text, p.x, p.y - 46 * p.t);
+      this.ctx.restore();
+    }
+    this.hud.draw(this.ctx, this.state, this.player, this.score, this.combo, this.levels, this.enemies.boss);
     if (this.state === 'play' && this.paused) {
       this.hud.drawPause(this.ctx);
     }
