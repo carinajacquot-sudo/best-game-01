@@ -5,6 +5,29 @@ export class InputHandler {
     this.keys = new Map();
     this.pressed = new Map();
     this.mouse = { x: 640, y: 360, down: false };
+    this.touchPointers = new Map();
+
+    this._onTouchPointerDown = (e) => {
+      const button = e.target.closest('[data-key]');
+      if (!button) return;
+      e.preventDefault();
+      const code = button.dataset.key;
+      if (!this.keys.get(code)) this.pressed.set(code, true);
+      this.keys.set(code, true);
+      this.touchPointers.set(e.pointerId, { code, button });
+      button.classList.add('pressed');
+      button.setPointerCapture?.(e.pointerId);
+    };
+
+    this._onTouchPointerUp = (e) => {
+      const active = this.touchPointers.get(e.pointerId);
+      if (!active) return;
+      this.touchPointers.delete(e.pointerId);
+      // Keep the key held if another finger is still pressing the same button.
+      const stillHeld = [...this.touchPointers.values()].some(item => item.code === active.code);
+      if (!stillHeld) this.keys.set(active.code, false);
+      active.button.classList.remove('pressed');
+    };
 
     this._onKeyDown = (e) => {
       const code = e.code;
@@ -41,6 +64,8 @@ export class InputHandler {
       this.keys.clear();
       this.pressed.clear();
       this.mouse.down = false;
+      this.touchPointers.forEach(({ button }) => button.classList.remove('pressed'));
+      this.touchPointers.clear();
     };
 
     this._onVisibilityChange = () => {
@@ -56,6 +81,9 @@ export class InputHandler {
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('mouseup', this._onMouseUp);
+    document.getElementById('touch-controls')?.addEventListener('pointerdown', this._onTouchPointerDown);
+    window.addEventListener('pointerup', this._onTouchPointerUp);
+    window.addEventListener('pointercancel', this._onTouchPointerUp);
     window.addEventListener('blur', this._onBlur);
     document.addEventListener('visibilitychange', this._onVisibilityChange);
   }
@@ -95,6 +123,9 @@ export class InputHandler {
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
+    document.getElementById('touch-controls')?.removeEventListener('pointerdown', this._onTouchPointerDown);
+    window.removeEventListener('pointerup', this._onTouchPointerUp);
+    window.removeEventListener('pointercancel', this._onTouchPointerUp);
     window.removeEventListener('blur', this._onBlur);
     document.removeEventListener('visibilitychange', this._onVisibilityChange);
   }
