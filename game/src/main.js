@@ -86,6 +86,10 @@ class Game {
       this.particles = new ParticleManager(this.rng);
     }
 
+    // Key art is generated once here (init-time, before the screenshot/harness branch);
+    // prepareScreenshot reuses this.keyArt instead of regenerating it.
+    // NOTE (P2): keyArtCanvas() uses its own fixed seed (1337) — deliberately identical
+    // across query seeds; ?seed= drives only background/enemies/particles.
     this.keyArt = keyArtCanvas();
     this.hud.setKeyArt(this.keyArt);
 
@@ -108,24 +112,33 @@ class Game {
   async prepareScreenshot(shot) {
     try {
       await loadScreenshotFonts();
-      this.keyArt = keyArtCanvas();
-      this.hud.setKeyArt(this.keyArt);
+      // Reuse the canvas built in init(); only rebuild if it is somehow missing.
+      if (!this.keyArt) {
+        this.keyArt = keyArtCanvas();
+        this.hud.setKeyArt(this.keyArt);
+      }
+      this.stageScreenshot(shot);
+      this.render();
+      await nextFrame();
+      this.render();
+      await nextFrame();
     } catch (e) {
+      // Any failure in staging OR the final paints must surface promptly —
+      // otherwise the capture runner can only observe a hang.
       window.__shotReady = false;
       window.__shotError = String((e && e.message) || e);
       console.error('[screenshot harness]', e);
       return;
     }
-    this.stageScreenshot(shot);
-    this.render();
-    await nextFrame();
-    this.render();
-    await nextFrame();
     window.__shotError = null;
     window.__shotReady = true;
   }
 
   stageScreenshot(shot) {
+    const SUPPORTED = ['start', 'play', 'boss', 'end'];
+    if (!SUPPORTED.includes(shot)) {
+      throw new Error(`unknown screenshot route "${shot}" — supported: ${SUPPORTED.join(', ')}`);
+    }
     if (shot === 'start') {
       this.state = 'title';
     } else if (shot === 'play') {
