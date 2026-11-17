@@ -1,9 +1,18 @@
 // hud.js: Heads-up display (HUD) and screen overlays (Title, How to Play, Level Clear, Game Over, Victory).
+//
+// PERFORMANCE NOTE (v7.1): the HUD used to issue ~20 shadowBlur'd text draws per
+// frame, which cost more than the entire rest of the frame. Static labels and
+// panels are now pre-rendered into cached layers and blitted; only genuinely
+// dynamic values (score, boss HP, pip row) are drawn live, and they use cheap
+// multi-pass glows instead of shadowBlur.
+
+import { glowText, cachedGradient } from './perf.js';
 
 export class HUD {
   constructor(keyArt = null) {
     this.keyArt = keyArt;
     this.screenshotMode = false;
+    this.panelLayer = null;
   }
 
   setKeyArt(keyArt) {
@@ -32,57 +41,67 @@ export class HUD {
       ctx.drawImage(this.keyArt, 0, 0, 1280, 720);
 
       // Bottom-up gradient over lower 45%
-      const botGrad = ctx.createLinearGradient(0, 720 * 0.55, 0, 720);
-      botGrad.addColorStop(0, 'rgba(5,2,10,0.05)');
-      botGrad.addColorStop(1, 'rgba(5,2,10,0.82)');
+      const botGrad = cachedGradient(ctx, 'titlebot', () => {
+        const g = ctx.createLinearGradient(0, 720 * 0.55, 0, 720);
+        g.addColorStop(0, 'rgba(5,2,10,0.05)');
+        g.addColorStop(1, 'rgba(5,2,10,0.82)');
+        return g;
+      });
       ctx.fillStyle = botGrad;
       ctx.fillRect(0, 720 * 0.55, 1280, 720 * 0.45);
 
       // Top vignette
-      const topGrad = ctx.createLinearGradient(0, 0, 0, 200);
-      topGrad.addColorStop(0, 'rgba(5,2,10,0.6)');
-      topGrad.addColorStop(1, 'rgba(5,2,10,0)');
+      const topGrad = cachedGradient(ctx, 'titletop', () => {
+        const g = ctx.createLinearGradient(0, 0, 0, 200);
+        g.addColorStop(0, 'rgba(5,2,10,0.6)');
+        g.addColorStop(1, 'rgba(5,2,10,0)');
+        return g;
+      });
       ctx.fillStyle = topGrad;
       ctx.fillRect(0, 0, 1280, 200);
 
       // EMBER
-      ctx.shadowColor = '#ff007f';
-      ctx.shadowBlur = 44;
-      ctx.fillStyle = '#ff2d95';
-      ctx.font = '112px Monoton';
-      ctx.textAlign = 'center';
-      ctx.fillText('EMBER', 640, 206);
+      glowText(ctx, 'EMBER', {
+        font: '112px Monoton', color: '#ff2d95', glow: '#ff007f', blur: 44,
+        align: 'center', x: 640, y: 206,
+      });
 
       // W I N G
-      ctx.shadowColor = '#00f0ff';
-      ctx.shadowBlur = 32;
-      ctx.fillStyle = '#00f0ff';
-      ctx.font = '54px Monoton';
-      ctx.fillText('W I N G', 640, 296);
+      glowText(ctx, 'W I N G', {
+        font: '54px Monoton', color: '#00f0ff', glow: '#00f0ff', blur: 32,
+        align: 'center', x: 640, y: 296,
+      });
 
       // Subtitle
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = '#8be9fd';
-      ctx.fillStyle = '#8be9fd';
-      ctx.font = '15px Orbitron';
-      ctx.fillText('T H E  L A S T  E M B E R  O F  A  D Y I N G  S T A R', 640, 346);
+      glowText(ctx, 'T H E  L A S T  E M B E R  O F  A  D Y I N G  S T A R', {
+        font: '15px Orbitron', color: '#8be9fd', glow: '#8be9fd', blur: 10,
+        align: 'center', x: 640, y: 346,
+      });
 
       if (pilot && pilot.profile) {
-        ctx.shadowColor = pilot.profile.color;
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = pilot.profile.color;
-        ctx.font = '700 17px Orbitron';
-        ctx.fillText(`PILOT CRAFT  ·  ${pilot.profile.name}`, 640, 432);
-        ctx.shadowBlur = 0;
+        glowText(ctx, `PILOT CRAFT  ·  ${pilot.profile.name}`, {
+          font: '700 17px Orbitron', color: pilot.profile.color, glow: pilot.profile.color,
+          blur: 12, align: 'center', x: 640, y: 432,
+        });
         ctx.fillStyle = 'rgba(255,255,255,.82)';
         ctx.font = '12px Orbitron';
+        ctx.textAlign = 'center';
         ctx.fillText(`${pilot.profile.role.toUpperCase()}  ·  ◀ / ▶ TO SELECT`, 640, 456);
       }
 
       // 2px magenta divider y=566 (x 410-870)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#ff007f';
+      ctx.lineWidth = 5;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(410, 566);
+      ctx.lineTo(870, 566);
+      ctx.stroke();
+      ctx.restore();
       ctx.strokeStyle = '#ff007f';
       ctx.lineWidth = 2;
-      ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.moveTo(410, 566);
       ctx.lineTo(870, 566);
@@ -99,13 +118,12 @@ export class HUD {
 
         ctx.textAlign = 'left';
         ctx.fillStyle = 'rgba(63, 215, 255, 0.75)';
-        ctx.shadowBlur = 0;
         ctx.fillText(bracket, startX, y);
 
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = 12;
-        ctx.fillText('  ' + action, startX + wBracket, y);
+        glowText(ctx, '  ' + action, {
+          font: '600 19px Orbitron', color: '#ffffff', glow: '#ffffff', blur: 12,
+          align: 'left', x: startX + wBracket, y,
+        });
         ctx.restore();
       };
 
@@ -189,45 +207,61 @@ export class HUD {
     ctx.restore();
   }
 
-  drawPlayHUD(ctx, player, score, combo, levelManager, boss) {
-    ctx.save();
+  /**
+   * The three glass HUD panels are static — they never change during play.
+   * They are rendered once into a cached layer (including their neon border
+   * glow, which used to cost three shadowBlur'd strokes per frame).
+   */
+  getPanelLayer(ctx) {
+    if (this.panelLayer) return this.panelLayer;
+    const layer = document.createElement('canvas');
+    layer.width = 1280;
+    layer.height = 120;
+    const c = layer.getContext('2d');
 
-    // Slim glass panels give the arcade readouts a stable, high-contrast home.
     const panel = (x, y, w, h, accent) => {
-      ctx.save();
-      ctx.fillStyle = 'rgba(5, 8, 24, 0.72)';
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 1.2;
-      ctx.shadowColor = accent;
-      ctx.shadowBlur = 9;
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 8);
-      ctx.fill();
-      ctx.globalAlpha = 0.7;
-      ctx.stroke();
+      c.save();
+      c.fillStyle = 'rgba(5, 8, 24, 0.72)';
+      c.strokeStyle = accent;
+      c.lineWidth = 1.2;
+      c.shadowColor = accent;
+      c.shadowBlur = 9;
+      c.beginPath();
+      c.roundRect(x, y, w, h, 8);
+      c.fill();
+      c.globalAlpha = 0.7;
+      c.stroke();
 
       // Corner brackets (6px L-shaped strokes, 2px, alpha .8)
-      ctx.globalAlpha = 0.8;
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 2;
+      c.globalAlpha = 0.8;
+      c.strokeStyle = accent;
+      c.lineWidth = 2;
       const bl = 6;
-      ctx.beginPath(); ctx.moveTo(x, y + bl); ctx.lineTo(x, y); ctx.lineTo(x + bl, y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x + w - bl, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + bl); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x, y + h - bl); ctx.lineTo(x, y + h); ctx.lineTo(x + bl, y + h); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x + w - bl, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - bl); ctx.stroke();
-      ctx.restore();
+      c.beginPath(); c.moveTo(x, y + bl); c.lineTo(x, y); c.lineTo(x + bl, y); c.stroke();
+      c.beginPath(); c.moveTo(x + w - bl, y); c.lineTo(x + w, y); c.lineTo(x + w, y + bl); c.stroke();
+      c.beginPath(); c.moveTo(x, y + h - bl); c.lineTo(x, y + h); c.lineTo(x + bl, y + h); c.stroke();
+      c.beginPath(); c.moveTo(x + w - bl, y + h); c.lineTo(x + w, y + h); c.lineTo(x + w, y + h - bl); c.stroke();
+      c.restore();
     };
     panel(20, 12, 190, 42, 'rgba(0,240,255,.8)');
     panel(470, 12, 340, 42, 'rgba(255,210,74,.8)');
     panel(1010, 12, 250, 42, 'rgba(255,0,127,.8)');
 
+    this.panelLayer = layer;
+    return layer;
+  }
+
+  drawPlayHUD(ctx, player, score, combo, levelManager, boss) {
+    ctx.save();
+
+    // Slim glass panels give the arcade readouts a stable, high-contrast home.
+    ctx.drawImage(this.getPanelLayer(ctx), 0, 0);
+
     // 'EMBER' Orbitron 11px dim cyan at x=34, y=34
-    ctx.font = '11px Orbitron';
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.7)';
-    ctx.shadowColor = '#00f0ff';
-    ctx.shadowBlur = 8;
-    ctx.textAlign = 'left';
-    ctx.fillText('EMBER', 34, 34);
+    glowText(ctx, 'EMBER', {
+      font: '11px Orbitron', color: 'rgba(0, 240, 255, 0.7)',
+      glow: '#00f0ff', blur: 8, align: 'left', x: 34, y: 34,
+    });
 
     // Lives as ember teardrops starting at x=96, y=30, spaced 27px
     for (let i = 0; i < player.lives; i++) {
@@ -237,8 +271,6 @@ export class HUD {
       ctx.translate(lx, ly);
 
       // Outer glow / outer teardrop (radius 10 '#ff4400')
-      ctx.shadowColor = '#ff4400';
-      ctx.shadowBlur = 10;
       ctx.fillStyle = '#ff4400';
       ctx.beginPath();
       ctx.moveTo(0, -10);
@@ -248,7 +280,6 @@ export class HUD {
 
       // Inner teardrop (radius 6.5 '#ff7700')
       ctx.fillStyle = '#ff7700';
-      ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.moveTo(0, -6.5);
       ctx.bezierCurveTo(4.5, -2, 5.5, 3, 0, 5.5);
@@ -265,40 +296,36 @@ export class HUD {
     }
 
     // Score & Multiplier (Orbitron 700 21px)
-    ctx.textAlign = 'center';
-    ctx.font = '700 21px Orbitron';
-    ctx.fillStyle = '#ffee00';
-    ctx.shadowColor = '#ffee00';
-    ctx.shadowBlur = 10;
-    ctx.fillText(`SCORE: ${score}   MULTIPLIER: x${combo}`, 640, 36);
+    glowText(ctx, `SCORE: ${score}   MULTIPLIER: x${combo}`, {
+      font: '700 21px Orbitron', color: '#ffee00', glow: '#ffee00', blur: 10,
+      align: 'center', x: 640, y: 36,
+    });
 
     // Nova Pulse meter sits below the life row and blooms when ready.
     const pulse = Math.max(0, Math.min(1, (player.pulseCharge || 0) / 100));
-    ctx.textAlign = 'left';
-    ctx.font = '9px Orbitron';
-    ctx.fillStyle = pulse >= 1 ? '#ffe27a' : 'rgba(130,255,244,.75)';
-    ctx.shadowColor = pulse >= 1 ? '#ffe27a' : '#48fff0';
-    ctx.shadowBlur = pulse >= 1 ? 12 : 5;
-    ctx.fillText(pulse >= 1 ? 'NOVA READY  [X]' : 'NOVA PULSE', 34, 70);
-    ctx.shadowBlur = 0;
+    glowText(ctx, pulse >= 1 ? 'NOVA READY  [X]' : 'NOVA PULSE', {
+      font: '9px Orbitron',
+      color: pulse >= 1 ? '#ffe27a' : 'rgba(130,255,244,.75)',
+      glow: pulse >= 1 ? '#ffe27a' : '#48fff0',
+      blur: pulse >= 1 ? 12 : 5, align: 'left', x: 34, y: 70,
+    });
     ctx.fillStyle = 'rgba(0, 0, 0, .55)';
     ctx.beginPath(); ctx.roundRect(34, 76, 156, 6, 3); ctx.fill();
     if (pulse > 0) {
-      const meter = ctx.createLinearGradient(34, 0, 190, 0);
-      meter.addColorStop(0, '#48fff0'); meter.addColorStop(1, pulse >= 1 ? '#ffe27a' : '#6e9dff');
+      const meter = cachedGradient(ctx, 'novameter', () => {
+        const g = ctx.createLinearGradient(34, 0, 190, 0);
+        g.addColorStop(0, '#48fff0'); g.addColorStop(1, pulse >= 1 ? '#ffe27a' : '#6e9dff');
+        return g;
+      });
       ctx.fillStyle = meter;
-      ctx.shadowColor = pulse >= 1 ? '#ffe27a' : '#48fff0';
-      ctx.shadowBlur = pulse >= 1 ? 12 : 6;
       ctx.beginPath(); ctx.roundRect(34, 76, 156 * pulse, 6, 3); ctx.fill();
     }
 
     // Level & Lanterns (Orbitron 15px)
-    ctx.textAlign = 'right';
-    ctx.font = '13px Orbitron';
-    ctx.fillStyle = '#ff007f';
-    ctx.shadowColor = '#ff007f';
-    ctx.shadowBlur = 10;
-    ctx.fillText(`SECTOR ${levelManager.currentLevel}/10 · ${levelManager.lanternsLit}/10 LIT`, 1240, 36);
+    glowText(ctx, `SECTOR ${levelManager.currentLevel}/10 · ${levelManager.lanternsLit}/10 LIT`, {
+      font: '13px Orbitron', color: '#ff007f', glow: '#ff007f', blur: 10,
+      align: 'right', x: 1240, y: 36,
+    });
 
     // Sector pip row with soft glow on next lantern pip (pulse via enginePhase)
     if (!this.enginePhase) this.enginePhase = 0;
@@ -310,8 +337,6 @@ export class HUD {
       const isNext = i === levelManager.lanternsLit;
       ctx.save();
       ctx.fillStyle = lit ? '#ff007f' : isNext ? `rgba(255,0,127,${0.3 + 0.4 * Math.sin(this.enginePhase * 4)})` : 'rgba(255,255,255,0.2)';
-      ctx.shadowColor = lit || isNext ? '#ff007f' : 'transparent';
-      ctx.shadowBlur = isNext ? 8 : (lit ? 4 : 0);
       ctx.fillRect(pipsX + i * 14, pipsY, 10, 4);
       ctx.restore();
     }
@@ -339,9 +364,12 @@ export class HUD {
       const hpRatio = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
       const fillW = bw * hpRatio;
       if (fillW > 0) {
-        const grad = ctx.createLinearGradient(bx, by, bx + bw, by);
-        grad.addColorStop(0, '#9d00ff');
-        grad.addColorStop(1, '#ff007f');
+        const grad = cachedGradient(ctx, 'bossbar', () => {
+          const g = ctx.createLinearGradient(bx, by, bx + bw, by);
+          g.addColorStop(0, '#9d00ff');
+          g.addColorStop(1, '#ff007f');
+          return g;
+        });
         ctx.fillStyle = grad;
         ctx.fillRect(bx, by, fillW, bh);
       }
@@ -355,21 +383,16 @@ export class HUD {
       ctx.moveTo(tick75, by - 2); ctx.lineTo(tick75, by + bh + 2);
       ctx.stroke();
 
-      ctx.font = '10px Orbitron';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-      ctx.textAlign = 'center';
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 5;
-      ctx.fillText(`${boss.title || 'THE HOLLOW CROWN'}  ·  PHASE ${boss.phase}`, 640, 52);
+      glowText(ctx, `${boss.title || 'THE HOLLOW CROWN'}  ·  PHASE ${boss.phase}`, {
+        font: '10px Orbitron', color: 'rgba(255, 255, 255, 0.7)', glow: '#ffffff',
+        blur: 5, align: 'center', x: 640, y: 52,
+      });
 
       // Boss name tag under the boss HP bar ("— <NAME> —", Orbitron 600 11px, alpha 0.85, letterspacing 3px)
-      ctx.font = '600 11px Orbitron';
-      try { ctx.letterSpacing = '3px'; } catch(e){}
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.shadowColor = boss.color || '#ff007f';
-      ctx.shadowBlur = 8;
-      ctx.fillText(`— ${boss.title || 'THE HOLLOW CROWN'} —`, 640, 82);
-      try { ctx.letterSpacing = '0px'; } catch(e){}
+      glowText(ctx, `— ${boss.title || 'THE HOLLOW CROWN'} —`, {
+        font: '600 11px Orbitron', color: 'rgba(255, 255, 255, 0.85)',
+        glow: boss.color || '#ff007f', blur: 8, align: 'center', x: 640, y: 82,
+      });
 
       ctx.restore();
     }

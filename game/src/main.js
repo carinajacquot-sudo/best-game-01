@@ -13,6 +13,7 @@ import { PowerupManager } from './powerups.js';
 import { LevelManager } from './levels.js';
 import { HUD } from './hud.js';
 import { keyArtCanvas } from './keyart.js';
+import { cachedGradient, makeLayer, QualityManager } from './perf.js';
 
 function readSeed(search) {
   const params = new URLSearchParams(search);
@@ -98,6 +99,13 @@ class Game {
     this.sceneCanvas.height = 720;
     this.sceneCtx = this.sceneCanvas.getContext('2d');
 
+    // Separate buffer holding the band that is mirrored for the floor reflection.
+    // (The scene canvas cannot read from itself while being drawn into.)
+    this.reflectSrc = document.createElement('canvas');
+    this.reflectSrc.width = 1280;
+    this.reflectSrc.height = 720;
+    this.reflectCtx = this.reflectSrc.getContext('2d');
+
     const grainCanvas = document.createElement('canvas');
     grainCanvas.width = 256;
     grainCanvas.height = 256;
@@ -124,8 +132,38 @@ class Game {
     scanCtx.fillRect(0, 0, 1, 2);
     this.scanPattern = this.ctx.createPattern(scanCanvas, 'repeat');
 
+    // Film finish layer: grain + scanlines + vignette baked into one canvas so
+    // the composite costs a single drawImage instead of three full-screen passes.
+    this.filmLayer = this.buildFilmLayer();
+
+    this.quality = new QualityManager();
+
     this.lastTime = performance.now();
     this.isHarness = false;
+  }
+
+  /** Pre-composite the grain + scanlines + vignette into a single reusable layer. */
+  buildFilmLayer() {
+    const layer = makeLayer(1280, 720);
+    const c = layer.ctx;
+    if (this.grainPattern) {
+      c.globalAlpha = 0.055;
+      c.globalCompositeOperation = 'overlay';
+      c.fillStyle = this.grainPattern;
+      c.fillRect(0, 0, 1280, 720);
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
+    }
+    if (this.scanPattern) {
+      c.fillStyle = this.scanPattern;
+      c.fillRect(0, 0, 1280, 720);
+    }
+    const vg = c.createRadialGradient(640, 360, 300, 640, 360, 720);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.38)');
+    c.fillStyle = vg;
+    c.fillRect(0, 0, 1280, 720);
+    return layer.canvas;
   }
 
   init() {
@@ -688,89 +726,108 @@ class Game {
     }
     sctx.restore();
 
-    // === Composite the scene onto the main canvas ===
+    // === Composite everything INSIDE the offscreen scene canvas ===
+    // Drawing to the visible (GPU-composited) canvas is ~10x more expensive than
+    // drawing to the offscreen buffer, so every pass — reflection, film finish,
+    // HUD — happens in the scene buffer and only ONE drawImage reaches the screen.
     const ctx = this.ctx;
-    ctx.clearRect(0, 0, 1280, 720);
-    ctx.drawImage(this.sceneCanvas, 0, 0);
 
-    // Fake floor reflection: mirror the band above the horizon (HORIZON = 560)
+    // Snapshot the scene into the reflection source buffer (one blit).
+    this.reflectCtx.clearRect(0, 0, 1280, 720);
+    this.reflectCtx.drawImage(this.sceneCanvas, 0, 0);
+
+    // Fake floor reflection: mirror the band above the horizon (HORIZON = 560).
+    // The mirrored strip is read from a dedicated snapshot buffer — reading from
+    // the canvas we are drawing into is undefined behaviour.
     const HORIZON = 560;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, HORIZON, 1280, 160);
-    ctx.clip();
-    ctx.translate(0, 2 * HORIZON);
-    ctx.scale(1, -1);
-    ctx.globalAlpha = 0.16;
-    ctx.drawImage(this.sceneCanvas, 0, 360, 1280, 200, 0, 360, 1280, 200);
-    ctx.restore();
-    // Reflection fades into the dark floor
-    const rg = ctx.createLinearGradient(0, HORIZON, 0, 720);
-    rg.addColorStop(0, 'rgba(10,6,24,0)');
-    rg.addColorStop(1, 'rgba(10,6,24,0.92)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, HORIZON, 1280, 160);
+    sctx.save();
+    sctx.beginPath();
+    sctx.rect(0, HORIZON, 1280, 160);
+    sctx.clip();
+    sctx.translate(0, 2 * HORIZON);
+    sctx.scale(1, -1);
+    sctx.globalAlpha = 0.16;
+    sctx.drawImage(this.reflectSrc, 0, 360, 1280, 200, 0, 360, 1280, 200);
+    sctx.restore();
+    // Reflection fades into the dark floor (gradient memoised — it never changes)
+    const rg = cachedGradient(sctx, 'floorfade', () => {
+      const g = sctx.createLinearGradient(0, HORIZON, 0, 720);
+      g.addColorStop(0, 'rgba(10,6,24,0)');
+      g.addColorStop(1, 'rgba(10,6,24,0.92)');
+      return g;
+    });
+    sctx.fillStyle = rg;
+    sctx.fillRect(0, HORIZON, 1280, 160);
 
-    // Film finish: grain + scanlines + vignette (pre-rendered at init from the seeded rng)
-    ctx.save();
-    if (this.grainPattern) {
-      ctx.globalAlpha = 0.055;
-      ctx.globalCompositeOperation = 'overlay'; // silently ignored where unsupported
-      ctx.fillStyle = this.grainPattern;
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
+    // Film finish: grain + scanlines + vignette, pre-composited into ONE layer at
+    // init. Previously this was three full-screen passes per frame (the grain
+    // pass additionally used the expensive 'overlay' composite op).
+    if (this.filmLayer) {
+      sctx.drawImage(this.filmLayer, 0, 0);
     }
-    if (this.scanPattern) {
-      ctx.fillStyle = this.scanPattern;
-      ctx.fillRect(0, 0, 1280, 720);
-    }
-    const vg = ctx.createRadialGradient(640, 360, 300, 640, 360, 720);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.38)');
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, 1280, 720);
-    ctx.restore();
 
-    // Chromatic aberration only on heavy hits (screenFlash > 0.22)
-    if (this.screenFlash > 0.22 && typeof ctx.filter === 'string') {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = Math.min(0.5, this.screenFlash);
-      ctx.filter = 'saturate(2.4) hue-rotate(-25deg)';
-      ctx.drawImage(this.sceneCanvas, -5, 0);
-      ctx.filter = 'saturate(2.4) hue-rotate(160deg)';
-      ctx.drawImage(this.sceneCanvas, 5, 0);
-      ctx.restore();
-      if ('filter' in ctx) ctx.filter = 'none';
+    // Chromatic aberration only on heavy hits (screenFlash > 0.22).
+    // Skipped on the 'low' tier: two full-frame filtered blits are expensive.
+    if (this.screenFlash > 0.22 && this.mediumFx !== false && typeof sctx.filter === 'string') {
+      sctx.save();
+      sctx.globalCompositeOperation = 'lighter';
+      sctx.globalAlpha = Math.min(0.5, this.screenFlash);
+      sctx.filter = 'saturate(2.4) hue-rotate(-25deg)';
+      sctx.drawImage(this.reflectSrc, -5, 0);
+      sctx.filter = 'saturate(2.4) hue-rotate(160deg)';
+      sctx.drawImage(this.reflectSrc, 5, 0);
+      sctx.restore();
+      if ('filter' in sctx) sctx.filter = 'none';
     }
 
     // HUD + cinematic plates + letterbox on top of the graded scene
-    this.hud.draw(ctx, this.state, this.player, this.score, this.combo, this.levels, this.enemies.boss, this.player, this.victoryT);
+    this.hud.draw(sctx, this.state, this.player, this.score, this.combo, this.levels, this.enemies.boss, this.player, this.victoryT);
     if (this.cinematic) {
-      this.hud.drawCinematicPlate(ctx, this.cinematic);
-      this.hud.drawLetterbox(ctx, this.cinematic);
+      this.hud.drawCinematicPlate(sctx, this.cinematic);
+      this.hud.drawLetterbox(sctx, this.cinematic);
     }
     if (this.screenFlash > 0) {
-      ctx.save();
-      ctx.fillStyle = `rgba(255, 55, 110, ${this.screenFlash * 0.3})`;
-      ctx.fillRect(0, 0, 1280, 720);
-      ctx.restore();
+      sctx.save();
+      sctx.fillStyle = `rgba(255, 55, 110, ${this.screenFlash * 0.3})`;
+      sctx.fillRect(0, 0, 1280, 720);
+      sctx.restore();
     }
     if (this.state === 'play' && this.paused) {
-      this.hud.drawPause(ctx);
+      this.hud.drawPause(sctx);
     }
+
+    // Single blit to the visible canvas.
+    ctx.clearRect(0, 0, 1280, 720);
+    ctx.drawImage(this.sceneCanvas, 0, 0);
   }
 
   loop(time) {
     if (this.isHarness) return;
-    const dt = Math.min((time - this.lastTime) / 1000, 0.05);
+    const rawDt = (time - this.lastTime) / 1000;
+    const dt = Math.min(rawDt, 0.05);
     this.lastTime = time;
+
+    // Adaptive quality: if the machine cannot keep up, the optional extras
+    // (chromatic aberration, god rays, extra particle glow) are dialled back so
+    // the game stays responsive instead of stuttering.
+    if (this.quality.sample(rawDt * 1000, time)) {
+      this.applyQuality();
+    }
 
     this.update(dt);
     this.render();
 
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /** Apply the current quality tier to the subsystems that support it. */
+  applyQuality() {
+    const tier = this.quality.tier;
+    this.lowFx = tier === 'low';
+    this.mediumFx = tier !== 'low';
+    // The background caches its layers per sector; a tier change only affects
+    // the optional god-ray/flare passes, which are read from `this.quality`.
+    this.background.quality = tier;
   }
 }
 

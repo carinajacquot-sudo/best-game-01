@@ -1,4 +1,8 @@
 // enemies.js: original procedural foes and the three-phase Hollow Crown encounter.
+//
+// PERFORMANCE NOTE (v7.1): every enemy used to fill its shape with a
+// shadowBlur'd colour. `glowFill` emulates that neon halo with two extra
+// additive, scaled-up fills — the same visual result at a fraction of the cost.
 import { CONFIG } from './config.js';
 
 export class EnemyManager {
@@ -6,6 +10,34 @@ export class EnemyManager {
     this.rng = rng;
     this.enemies = [];
     this.boss = null;
+  }
+
+  /**
+   * Cheap replacement for a shadowBlur'd fill: two additive translucent fills
+   * of the current path, scaled up slightly, produce a convincing neon halo.
+   * The caller must have begun the path before calling this.
+   */
+  glowFill(ctx, blur, color) {
+    const saveAlpha = ctx.globalAlpha;
+    const saveOp = ctx.globalCompositeOperation;
+    const saveFill = ctx.fillStyle;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = color;
+    ctx.globalAlpha = saveAlpha * 0.30;
+    ctx.scale(1.16, 1.16);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = color;
+    ctx.globalAlpha = saveAlpha * 0.42;
+    ctx.scale(1.07, 1.07);
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = saveAlpha;
+    ctx.globalCompositeOperation = saveOp;
+    ctx.fillStyle = saveFill;
   }
 
   rand() { return this.rng ? this.rng.next() : Math.random(); }
@@ -165,10 +197,15 @@ export class EnemyManager {
       ctx.fillStyle = color;
       ctx.strokeStyle = 'rgba(255,255,255,.9)';
       ctx.lineWidth = 1.7;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = e.type === 'tank' ? 18 : 13;
+      // PERFORMANCE (v7.1): the per-enemy shadowBlur glow was one of the most
+      // expensive operations in the frame. It is replaced by a cheap additive
+      // halo drawn with the same path — visually equivalent at this scale.
+      ctx.shadowBlur = 0;
       if (e.type === 'drifter') {
-        ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-14, -13); ctx.lineTo(-7, 0); ctx.lineTo(-14, 13); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-14, -13); ctx.lineTo(-7, 0); ctx.lineTo(-14, 13); ctx.closePath();
+        this.glowFill(ctx, e.type === 'tank' ? 18 : 13, color);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.7; ctx.stroke();
         ctx.fillStyle = '#fff4cc'; ctx.fillRect(2, -2, 5, 4);
         // Rim light (2.5D)
         ctx.strokeStyle = 'rgba(255,255,255,0.55)';
@@ -176,14 +213,20 @@ export class EnemyManager {
         ctx.beginPath(); ctx.moveTo(14, -2); ctx.lineTo(-10, -9); ctx.stroke();
       } else if (e.type === 'weaver') {
         ctx.rotate(e.time * 0.5);
-        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(18, 0); ctx.lineTo(0, 20); ctx.lineTo(-18, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(18, 0); ctx.lineTo(0, 20); ctx.lineTo(-18, 0); ctx.closePath();
+        this.glowFill(ctx, 13, color);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.7; ctx.stroke();
         ctx.fillStyle = '#07121c'; ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
         // Rim light (2.5D)
         ctx.strokeStyle = 'rgba(255,255,255,0.55)';
         ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(-12, 0); ctx.stroke();
       } else if (e.type === 'tank') {
-        ctx.beginPath(); ctx.roundRect(-23, -22, 46, 44, 9); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.roundRect(-23, -22, 46, 44, 9);
+        this.glowFill(ctx, 18, color);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.7; ctx.stroke();
         // Tank top edge light gradient strip (2.5D rim light)
         const tankTopGrad = ctx.createLinearGradient(0, -22, 0, -10);
         tankTopGrad.addColorStop(0, 'rgba(255,255,255,0.55)');
@@ -194,7 +237,10 @@ export class EnemyManager {
         ctx.fill();
         ctx.strokeStyle = 'rgba(40,12,20,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke();
       } else if (e.type === 'lancer') {
-        ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(-12, -10); ctx.lineTo(-4, 0); ctx.lineTo(-12, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(-12, -10); ctx.lineTo(-4, 0); ctx.lineTo(-12, 10); ctx.closePath();
+        this.glowFill(ctx, 13, color);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.7; ctx.stroke();
         // Rim light (2.5D)
         ctx.strokeStyle = 'rgba(255,255,255,0.55)';
         ctx.lineWidth = 1.2;
@@ -204,7 +250,10 @@ export class EnemyManager {
       } else {
         ctx.rotate(e.time * 0.35);
         for (let i = 0; i < 6; i++) {
-          ctx.rotate(Math.PI / 3); ctx.beginPath(); ctx.ellipse(0, -16, 6, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.rotate(Math.PI / 3); ctx.beginPath(); ctx.ellipse(0, -16, 6, 13, 0, 0, Math.PI * 2);
+          this.glowFill(ctx, 13, color);
+          ctx.fillStyle = color; ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1.7; ctx.stroke();
         }
         ctx.fillStyle = '#f4ffd1'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
         // Rim light (2.5D)
@@ -213,7 +262,7 @@ export class EnemyManager {
         ctx.beginPath(); ctx.arc(0, 0, 11, -Math.PI * 0.8, -Math.PI * 0.2); ctx.stroke();
       }
       if (e.maxHp > 1) {
-        ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(-20, 30, 40, 4);
+        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(-20, 30, 40, 4);
         ctx.fillStyle = color; ctx.fillRect(-20, 30, 40 * Math.max(0, e.hp / e.maxHp), 4);
       }
       ctx.restore();
@@ -246,13 +295,25 @@ export class EnemyManager {
     ctx.translate(b.x, b.y);
     const color = b.phase === 1 ? b.color : b.phase === 2 ? '#ff955d' : '#ff4f9f';
     ctx.rotate(Math.sin(b.angle * 2.0) * 0.035);
-    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowColor = color; ctx.shadowBlur = 22;
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowBlur = 0;
     // Concentric, original crown-orbit rings; telegraph glow intensifies before each attack.
+    // Cheap additive glow pass instead of a per-ring shadowBlur.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let ring = 0; ring < 3; ring++) {
+      ctx.beginPath(); ctx.ellipse(0, 0, 54 + ring * 12 + b.telegraph * 8, 42 + ring * 8, b.angle * (ring % 2 ? -1 : 1), -0.2, Math.PI * 1.55);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.16;
+      ctx.lineWidth = 8;
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
     for (let ring = 0; ring < 3; ring++) {
       ctx.beginPath(); ctx.ellipse(0, 0, 54 + ring * 12 + b.telegraph * 8, 42 + ring * 8, b.angle * (ring % 2 ? -1 : 1), -0.2, Math.PI * 1.55); ctx.stroke();
     }
     ctx.fillStyle = '#21123d'; ctx.strokeStyle = color; ctx.lineWidth = 4;
-    ctx.shadowColor = color; ctx.shadowBlur = 20;
+    ctx.shadowBlur = 0;
     const hull = b.style;
     if (hull === 0) {
       ctx.beginPath(); ctx.moveTo(-42, -18); ctx.lineTo(-28, -42); ctx.lineTo(-12, -28); ctx.lineTo(0, -54); ctx.lineTo(13, -28); ctx.lineTo(31, -41); ctx.lineTo(43, -15); ctx.lineTo(34, 28); ctx.lineTo(0, 44); ctx.lineTo(-34, 28); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -283,8 +344,10 @@ export class EnemyManager {
       ctx.beginPath(); ctx.moveTo(-50, -26); ctx.lineTo(-18, -34); ctx.lineTo(0, -18); ctx.lineTo(18, -34); ctx.lineTo(50, -26); ctx.lineTo(37, 0); ctx.lineTo(50, 26); ctx.lineTo(18, 34); ctx.lineTo(0, 18); ctx.lineTo(-18, 34); ctx.lineTo(-50, 26); ctx.lineTo(-37, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
       for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(side * 34, -12); ctx.lineTo(side * 62, -22); ctx.lineTo(side * 56, 0); ctx.lineTo(side * 62, 22); ctx.lineTo(side * 34, 12); ctx.stroke(); }
     }
-    ctx.fillStyle = color; ctx.shadowBlur = 16;
-    ctx.beginPath(); ctx.arc(-14, -4, 7 + b.telegraph * 3, 0, Math.PI * 2); ctx.arc(14, -4, 7 + b.telegraph * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = color; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.arc(-14, -4, 7 + b.telegraph * 3, 0, Math.PI * 2); ctx.arc(14, -4, 7 + b.telegraph * 3, 0, Math.PI * 2);
+    this.glowFill(ctx, 16, color);
+    ctx.fillStyle = color; ctx.fill();
     ctx.strokeStyle = '#ffe4a3'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-13, 21); ctx.quadraticCurveTo(0, 31, 13, 21); ctx.stroke();
     ctx.restore();
   }

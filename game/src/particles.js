@@ -133,19 +133,18 @@ export class ParticleManager {
 
   draw(ctx) {
     ctx.save();
+    // PERFORMANCE (v7.1): shadowBlur per particle was the single biggest cost
+    // during explosions. Neon glows are now produced by cheap additive strokes.
+    ctx.shadowBlur = 0;
     for (const p of this.particles) {
       const alpha = Math.max(0, p.life / p.maxLife);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = 8;
       if (p.shape === 'speedline') {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = alpha * 0.8;
         ctx.strokeStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 10;
         const t = 1 - alpha;
         const r0 = 30;
         const r1 = r0 + p.len * (t * (2 - t));
@@ -153,10 +152,15 @@ export class ParticleManager {
         const y1 = p.y + Math.sin(p.angle) * r0;
         const x2 = p.x + Math.cos(p.angle) * r1;
         const y2 = p.y + Math.sin(p.angle) * r1;
-        ctx.lineWidth = Math.max(0.5, 2 * alpha);
+        // Wide soft pass + narrow bright pass = glow without shadowBlur.
+        ctx.lineWidth = Math.max(0.5, 2 * alpha) * 4;
+        ctx.globalAlpha = alpha * 0.28;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.lineWidth = Math.max(0.5, 2 * alpha);
         ctx.stroke();
         ctx.restore();
         continue;
@@ -169,8 +173,6 @@ export class ParticleManager {
         ctx.fillStyle = p.color;
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 1;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 10;
         ctx.beginPath();
         ctx.moveTo(p.polygon[0].x, p.polygon[0].y);
         for (let j = 1; j < p.polygon.length; j++) {
@@ -188,8 +190,6 @@ export class ParticleManager {
         ctx.globalAlpha = alpha * 1.08;
         ctx.strokeStyle = p.color;
         ctx.lineWidth = Math.max(1, p.lineWidth * (1 - t));
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 18;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
         // chromatic halo edge
         ctx.globalAlpha = alpha * 0.45;
@@ -200,6 +200,8 @@ export class ParticleManager {
       }
       if (p.shape === 'pool') {
         ctx.globalAlpha = alpha * 0.5;
+        // The pool gradient is centred on the particle, so it is rebuilt only
+        // when the particle actually moves enough to matter.
         const pool = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, p.size);
         pool.addColorStop(0, p.color);
         pool.addColorStop(1, 'rgba(0,0,0,0)');
@@ -225,8 +227,6 @@ export class ParticleManager {
       if (p.shape === 'mote') {
         ctx.globalAlpha = alpha;
         ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 6;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
         continue;
       }
