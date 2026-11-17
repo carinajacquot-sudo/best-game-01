@@ -41,6 +41,50 @@ export class ParticleManager {
     this._push({ x, y, vx: 0, vy: 0, color, size, life, maxLife: life, shape: 'pool' });
   }
 
+  speedLines(x, y, color = '#fffbe0', count = 18, length = 190, life = 0.5) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
+    for (let i = 0; i < count; i++) {
+      this._push({
+        x, y,
+        angle: rand() * Math.PI * 2,
+        len: length * (0.6 + rand() * 0.8),
+        life, maxLife: life,
+        color,
+        shape: 'speedline'
+      });
+    }
+  }
+
+  debris(x, y, colors = ['#ff9a3c', '#ffffff', '#ff007f'], count = 26) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
+    for (let i = 0; i < count; i++) {
+      const angle = rand() * Math.PI * 2;
+      const speed = rand() * 8 + 3;
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed - 2;
+      const n = 5 + Math.floor(rand() * 3);
+      const polygon = [];
+      for (let j = 0; j < n; j++) {
+        const a = (j / n) * Math.PI * 2;
+        const r = 4 + rand() * 7;
+        polygon.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+      }
+      const color = Array.isArray(colors) ? colors[Math.floor(rand() * colors.length)] : colors;
+      this._push({
+        x, y, vx, vy,
+        gravity: 260,
+        drag: 0.985,
+        spin: rand() * Math.PI * 2,
+        angularVel: (rand() - 0.5) * 8,
+        polygon,
+        color,
+        life: 1.4 + rand() * 0.8,
+        maxLife: 2.2,
+        shape: 'shard'
+      });
+    }
+  }
+
   explosion(x, y, color = '#00f0ff', count = 25) {
     const rand = () => (this.rng ? this.rng.next() : Math.random());
     for (let i = 0; i < count; i++) {
@@ -57,17 +101,31 @@ export class ParticleManager {
     this.groundPool(x, y, color, 0.45, 64);
     this.motes(x, y, '#ffe8b0', 7);
     // Larger bursts get a second, wider shockwave for the 2.5D punch
-    if (count >= 30) this.shockwave(x, y, '#ffffff', 190, 0.8, 7);
+    if (count >= 30) {
+      this.shockwave(x, y, '#ffffff', 190, 0.8, 7);
+      this.speedLines(x, y, '#fff2c0', 10, 150, 0.45);
+    }
   }
 
   update(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
-      p.x += p.vx * dt * 60;
-      p.y += p.vy * dt * 60;
-      p.life -= dt;
-      p.size = Math.max(0, p.size - dt * 2);
-      if (p.life <= 0 || p.size <= 0) {
+      if (p.shape === 'shard') {
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.vx *= Math.pow(p.drag, dt * 60);
+        p.vy += p.gravity * dt;
+        p.spin += p.angularVel * dt;
+        p.life -= dt;
+      } else if (p.shape === 'speedline') {
+        p.life -= dt;
+      } else {
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.life -= dt;
+        p.size = Math.max(0, p.size - dt * 2);
+      }
+      if (p.life <= 0 || (p.shape !== 'speedline' && p.shape !== 'shard' && p.size <= 0)) {
         this.particles.splice(i, 1);
       }
     }
@@ -81,6 +139,49 @@ export class ParticleManager {
       ctx.fillStyle = p.color;
       ctx.shadowColor = p.color;
       ctx.shadowBlur = 8;
+      if (p.shape === 'speedline') {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.strokeStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 10;
+        const t = 1 - alpha;
+        const r0 = 30;
+        const r1 = r0 + p.len * (t * (2 - t));
+        const x1 = p.x + Math.cos(p.angle) * r0;
+        const y1 = p.y + Math.sin(p.angle) * r0;
+        const x2 = p.x + Math.cos(p.angle) * r1;
+        const y2 = p.y + Math.sin(p.angle) * r1;
+        ctx.lineWidth = Math.max(0.5, 2 * alpha);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+      if (p.shape === 'shard') {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.spin);
+        ctx.fillStyle = p.color;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(p.polygon[0].x, p.polygon[0].y);
+        for (let j = 1; j < p.polygon.length; j++) {
+          ctx.lineTo(p.polygon[j].x, p.polygon[j].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       if (p.shape === 'shockwave') {
         const t = 1 - alpha;
         const r = p.radius0 + (p.size - p.radius0) * t;

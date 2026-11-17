@@ -19,6 +19,7 @@ export class Background {
     this.buildings1 = this.generateSkyline(12, 180, 320, 1.0);
     this.buildings2 = this.generateSkyline(18, 100, 220, 2.0);
     this.buildings3 = this.generateSkyline(26, 50, 140, 3.5);
+    this.farBuildings = this.generateSkyline(26, 60, 210, 0.4);
 
     this.rain = [];
     for (let i = 0; i < 42; i++) {
@@ -32,6 +33,7 @@ export class Background {
     }
 
     this.beaconPhase = 0;
+    this.enginePhase = 0;
     this.sector = 1;
 
     this.cachedCtx = null;
@@ -75,9 +77,10 @@ export class Background {
       }
     }
     this.beaconPhase += dt;
+    this.enginePhase += dt;
   }
 
-  draw(ctx) {
+  draw(ctx, boss = null) {
     if (!this.sectorPalettes) this.sectorPalettes = [
       { sky: ['#05020a', '#150a2b', '#2b0c3a'], sun: ['#ffea00', '#ff4400', '#ff007f'], haze: 'rgba(255,0,127,.34)', city: ['#100620', '#1e0b36', '#2a0d4a'], grid: 'rgba(0,240,255,.25)' },
       { sky: ['#03111b', '#092b43', '#174661'], sun: ['#c6fff2', '#36c9c2', '#2680a2'], haze: 'rgba(54,201,194,.28)', city: ['#071925', '#0b2b3d', '#124055'], grid: 'rgba(93,255,229,.24)' },
@@ -115,15 +118,6 @@ export class Background {
     ctx.fillStyle = this.bgGrad;
     ctx.fillRect(0, 0, 1280, 720);
 
-    // Horizon haze band (2.5D atmospheric perspective)
-    ctx.save();
-    const hazeBandGrad = ctx.createLinearGradient(0, 560 - 65, 0, 560 + 65);
-    hazeBandGrad.addColorStop(0, 'rgba(255,80,170,0.16)');
-    hazeBandGrad.addColorStop(1, 'rgba(255,80,170,0)');
-    ctx.fillStyle = hazeBandGrad;
-    ctx.fillRect(0, 560 - 65, 1280, 130);
-    ctx.restore();
-
     // Stars
     ctx.fillStyle = '#ffffff';
     for (const star of this.stars) {
@@ -131,6 +125,36 @@ export class Background {
       ctx.fillRect(star.x, star.y, star.size, star.size);
     }
     ctx.globalAlpha = 1.0;
+
+    // SUN GOD RAYS (6 additive wedge beams radiating from sun disc)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 6; i++) {
+      const angle = this.enginePhase * 0.06 + i * (Math.PI / 3);
+      ctx.save();
+      ctx.translate(640, 320);
+      ctx.rotate(angle);
+      const rayGrad = ctx.createLinearGradient(0, 0, 0, 800);
+      rayGrad.addColorStop(0, 'rgba(255,140,110,0.08)');
+      rayGrad.addColorStop(1, 'rgba(255,140,110,0)');
+      ctx.fillStyle = rayGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-30, 800);
+      ctx.lineTo(30, 800);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // FAR SILHOUETTE LAYER: "Glass Meridian" distant city
+    this.drawFarSkylineLayer(ctx, this.farBuildings, '#141033');
+
+    // Parallax skyline layers
+    this.drawSkylineLayer(ctx, this.buildings1, theme.city[0]);
+    this.drawSkylineLayer(ctx, this.buildings2, theme.city[1]);
+    this.drawSkylineLayer(ctx, this.buildings3, theme.city[2]);
 
     // Setting Synthwave Sun Disc
     const sunX = 640;
@@ -151,11 +175,57 @@ export class Background {
     ctx.beginPath();
     ctx.rect(sunX - sunRadius, sunY, sunRadius * 2, sunRadius);
     ctx.clip();
-    ctx.fillStyle = '#150a2b';
+    ctx.fillStyle = theme.sky[1] || '#150a2b';
     for (let y = sunY + 10; y < sunY + sunRadius; y += 16) {
       const h = Math.max(2, (y - sunY) * 0.1);
       ctx.fillRect(sunX - sunRadius - 20, y, sunRadius * 2 + 40, h);
     }
+    ctx.restore();
+
+    // ANAMORPHIC FLARE (Sun)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const flareGrad = ctx.createRadialGradient(640, 320, 0, 640, 320, 480);
+    flareGrad.addColorStop(0, 'rgba(255,220,200,0.35)');
+    flareGrad.addColorStop(0.4, 'rgba(255,120,160,0.14)');
+    flareGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = flareGrad;
+    ctx.translate(640, 320);
+    ctx.scale(18, 0.58);
+    ctx.beginPath();
+    ctx.arc(0, 0, 50, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,190,210,0.22)';
+    ctx.beginPath(); ctx.arc(640 - 260, 320, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(640 + 320, 320, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Boss Eye Anamorphic Flare (sector 10 / style === 9)
+    if (boss && boss.style === 9) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const bFlareGrad = ctx.createRadialGradient(boss.x, boss.y, 0, boss.x, boss.y, 400);
+      bFlareGrad.addColorStop(0, 'rgba(255,240,194,0.5)');
+      bFlareGrad.addColorStop(0.5, 'rgba(255,100,200,0.2)');
+      bFlareGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = bFlareGrad;
+      ctx.translate(boss.x, boss.y);
+      ctx.scale(18, 0.55);
+      ctx.beginPath(); ctx.arc(0, 0, 45, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Horizon haze band (2.5D atmospheric perspective)
+    ctx.save();
+    const hazeBandGrad = ctx.createLinearGradient(0, 560 - 65, 0, 560 + 65);
+    hazeBandGrad.addColorStop(0, 'rgba(255,80,170,0.16)');
+    hazeBandGrad.addColorStop(1, 'rgba(255,80,170,0)');
+    ctx.fillStyle = hazeBandGrad;
+    ctx.fillRect(0, 560 - 65, 1280, 130);
     ctx.restore();
 
     // Horizon haze glow band
@@ -181,11 +251,6 @@ export class Background {
     }
     ctx.restore();
 
-    // Parallax skyline layers
-    this.drawSkylineLayer(ctx, this.buildings1, theme.city[0]);
-    this.drawSkylineLayer(ctx, this.buildings2, theme.city[1]);
-    this.drawSkylineLayer(ctx, this.buildings3, theme.city[2]);
-
     // Perspective floor grid (cyberpunk horizon grid)
     ctx.strokeStyle = theme.grid;
     ctx.lineWidth = 2;
@@ -202,6 +267,46 @@ export class Background {
       ctx.lineTo(1280, y);
     }
     ctx.stroke();
+  }
+
+  drawFarSkylineLayer(ctx, buildings, color) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    for (let bIndex = 0; bIndex < buildings.length; bIndex++) {
+      const b = buildings[bIndex];
+      const y = 560 - b.h;
+      const grad = ctx.createLinearGradient(b.x, y, b.x, 560);
+      grad.addColorStop(0, '#221a44');
+      grad.addColorStop(1, color);
+      ctx.fillStyle = grad;
+      ctx.fillRect(b.x, y, b.w, b.h);
+
+      if (bIndex % 3 === 0) {
+        ctx.strokeStyle = '#221a44';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(b.x + b.w * 0.3, y);
+        ctx.lineTo(b.x + b.w * 0.3, y - 18);
+        ctx.moveTo(b.x + b.w * 0.7, y);
+        ctx.lineTo(b.x + b.w * 0.7, y - 18);
+        ctx.stroke();
+      }
+
+      if (bIndex === 5 || bIndex === 17) {
+        const roofY = y;
+        const blink = Math.sin(this.enginePhase * (Math.PI * 2 / 1.6) + bIndex) > 0 ? 0.95 : 0.15;
+        ctx.save();
+        ctx.globalAlpha = blink;
+        ctx.fillStyle = '#ff0044';
+        ctx.shadowColor = '#ff0044';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(b.x + b.w / 2, roofY - (bIndex === 5 ? 18 : 0), 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   drawSkylineLayer(ctx, buildings, color) {
