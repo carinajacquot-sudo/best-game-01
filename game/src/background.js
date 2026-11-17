@@ -306,16 +306,21 @@ export class Background {
     if (boss && boss.style === 9) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const bFlareGrad = cachedGradient(ctx, 'bossflare' + this.sector, () => {
-        const g = ctx.createRadialGradient(boss.x, boss.y, 0, boss.x, boss.y, 400);
-        g.addColorStop(0, 'rgba(255,240,194,0.5)');
-        g.addColorStop(0.5, 'rgba(255,100,200,0.2)');
+      // BUGFIX (v7.1): this ramp used to be built at (boss.x, boss.y) while the
+      // context is *also* translated to the boss, so the bright core landed
+      // outside the shape and only the faint outer rim sampled — visible as a
+      // grey smear beside the boss. The flare is drawn in the translated/scaled
+      // local space instead, which also makes the cache entry position-agnostic.
+      const bFlareGrad = cachedGradient(ctx, 'bossflare', () => {
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 45);
+        g.addColorStop(0, 'rgba(255,240,194,0.55)');
+        g.addColorStop(0.45, 'rgba(255,120,205,0.26)');
         g.addColorStop(1, 'rgba(0,0,0,0)');
         return g;
       });
-      ctx.fillStyle = bFlareGrad;
       ctx.translate(boss.x, boss.y);
       ctx.scale(18, 0.55);
+      ctx.fillStyle = bFlareGrad;
       ctx.beginPath(); ctx.arc(0, 0, 45, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }

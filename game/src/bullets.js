@@ -101,11 +101,22 @@ export class BulletManager {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
 
+    // The 2.5D ground-bounce pool belongs on the FLOOR, not under the bolt:
+    // drawing it for every mid-air round smeared a haze blob behind each bullet.
+    // It is now drawn only for rounds in the lower band, pinned to the floor
+    // line and faded in with proximity.
+    const GROUND = 640;
+    const showPools = this.poolsEnabled !== false;
+
     for (const b of this.bullets) {
-      // 2.5D ground-bounce: a wide, faint light pool a step below the bolt.
-      // Pre-rendered as a sprite too — the pool shape never changes.
-      const poolSprite = this.getPoolSprite(b.color);
-      ctx.drawImage(poolSprite, b.x - poolSprite.width / 2, b.y + 12 - poolSprite.height / 2);
+      if (showPools && b.y > 468) {
+        const near = Math.min(1, (b.y - 468) / 150);
+        const poolSprite = this.getPoolSprite(b.color);
+        ctx.save();
+        ctx.globalAlpha = (ctx.globalAlpha || 1) * 0.35 + near * 0.5;
+        ctx.drawImage(poolSprite, b.x - poolSprite.width / 2, GROUND - poolSprite.height / 2);
+        ctx.restore();
+      }
 
       const sprite = this.getSprite(b.color, b.isPlayer);
       if (b.isPlayer) {
