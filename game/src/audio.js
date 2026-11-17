@@ -7,6 +7,7 @@ export class AudioManager {
     this.musicTimer = null;
     this.step = 0;
     this.scale = [110, 130.81, 164.81, 196, 220, 261.63, 329.63, 392]; // A minor pentatonic / synthwave root
+    this.musicRequested = false;
   }
 
   init() {
@@ -26,13 +27,14 @@ export class AudioManager {
     if (this.muted && this.musicTimer) {
       clearInterval(this.musicTimer);
       this.musicTimer = null;
-    } else if (!this.muted && !this.musicTimer) {
+    } else if (!this.muted && this.musicRequested) {
       this.startMusic();
     }
     return this.muted;
   }
 
   startMusic() {
+    this.musicRequested = true;
     if (this.musicTimer || this.muted) return;
     // 100 BPM -> beat = 600ms, 16th note = 150ms
     this.musicTimer = setInterval(() => {
@@ -61,6 +63,7 @@ export class AudioManager {
   }
 
   stopMusic() {
+    this.musicRequested = false;
     if (this.musicTimer) {
       clearInterval(this.musicTimer);
       this.musicTimer = null;

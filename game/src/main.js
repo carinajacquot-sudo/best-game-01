@@ -33,6 +33,7 @@ class Game {
     this.combo = 1;
     this.comboTimer = 0;
     this.rng = new RNG(12345);
+    this.paused = false;
 
     this.lastTime = performance.now();
     this.isHarness = false;
@@ -49,6 +50,7 @@ class Game {
 
     if (shot) {
       this.isHarness = true;
+      Math.random = () => this.rng.next();
       this.stageScreenshot(shot);
       return;
     }
@@ -172,123 +174,130 @@ class Game {
       }
     } else if (this.state === 'play') {
       if (this.input.wasPressed('KeyP')) {
-        // Toggle pause or handle pause
+        this.paused = !this.paused;
+        this.lastTime = performance.now();
+        this.audio.playUI();
       }
 
-      this.background.update(dt, 1);
-      this.player.update(dt, this.input);
+      if (this.paused) {
+        // Skip all world simulation when paused
+      } else {
+        this.background.update(dt, 1);
+        this.player.update(dt, this.input);
 
-      // Firing
-      if (this.input.isFiring() && this.player.canFire()) {
-        this.audio.playShoot();
-        this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
-        if (this.player.flareTimer > 0) {
-          this.bullets.spawn(this.player.x + 10, this.player.y - 15, 14, -2, true, '#ffee00');
-          this.bullets.spawn(this.player.x + 10, this.player.y + 15, 14, 2, true, '#ffee00');
-        }
-      }
-
-      this.bullets.update(dt);
-      this.enemies.update(dt, this.bullets);
-      this.powerups.update(dt, this.player);
-      this.particles.update(dt);
-      this.levels.update(dt, this.enemies, this.rng);
-
-      // Combo decay timer
-      if (this.comboTimer > 0) {
-        this.comboTimer -= dt;
-        if (this.comboTimer <= 0) {
-          this.combo = 1;
-        }
-      }
-
-      // Collisions: Player bullets vs enemies & boss
-      for (let bi = this.bullets.bullets.length - 1; bi >= 0; bi--) {
-        const b = this.bullets.bullets[bi];
-        if (!b.isPlayer) continue;
-
-        // Check boss collision
-        if (this.enemies.boss && circleCollide(b, this.enemies.boss)) {
-          this.enemies.boss.hp--;
-          this.bullets.bullets.splice(bi, 1);
-          this.particles.spawn(b.x, b.y, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, '#9d00ff', 6, 0.3);
-          if (this.enemies.boss.hp <= 0) {
-            this.audio.playBoom();
-            this.particles.explosion(this.enemies.boss.x, this.enemies.boss.y, '#9d00ff', 50);
-            this.score += CONFIG.scoring.boss * this.combo;
-            this.enemies.boss = null;
-          }
-          continue;
-        }
-
-        // Check standard enemy collision
-        let hitEnemy = false;
-        for (let ei = this.enemies.enemies.length - 1; ei >= 0; ei--) {
-          const e = this.enemies.enemies[ei];
-          if (circleCollide(b, e)) {
-            e.hp--;
-            hitEnemy = true;
-            this.particles.spawn(b.x, b.y, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, '#ff007f', 5, 0.3);
-            if (e.hp <= 0) {
-              this.audio.playBoom();
-              this.particles.explosion(e.x, e.y, e.type === 'tank' ? '#ff7700' : '#ff007f', 30);
-              this.score += e.scoreValue * this.combo;
-              this.combo = Math.min(8, this.combo + 1);
-              this.comboTimer = 4.0;
-
-              // Tank drops powerup
-              if (e.type === 'tank') {
-                const pType = this.rng.choice(['flare', 'aegis', 'magnet']);
-                this.powerups.spawn(e.x, e.y, pType);
-              }
-
-              this.enemies.enemies.splice(ei, 1);
-            }
-            break;
+        // Firing
+        if (this.input.isFiring() && this.player.canFire()) {
+          this.audio.playShoot();
+          this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
+          if (this.player.flareTimer > 0) {
+            this.bullets.spawn(this.player.x + 10, this.player.y - 15, 14, -2, true, '#ffee00');
+            this.bullets.spawn(this.player.x + 10, this.player.y + 15, 14, 2, true, '#ffee00');
           }
         }
-        if (hitEnemy) {
-          this.bullets.bullets.splice(bi, 1);
-        }
-      }
 
-      // Collisions: Enemy bullets vs player
-      for (let bi = this.bullets.bullets.length - 1; bi >= 0; bi--) {
-        const b = this.bullets.bullets[bi];
-        if (b.isPlayer) continue;
-        if (circleCollide(b, this.player)) {
-          this.bullets.bullets.splice(bi, 1);
-          this.audio.playHit();
-          const lost = this.player.hit();
-          if (lost) {
+        this.bullets.update(dt);
+        this.enemies.update(dt, this.bullets);
+        this.powerups.update(dt, this.player);
+        this.particles.update(dt);
+        this.levels.update(dt, this.enemies, this.rng);
+
+        // Combo decay timer
+        if (this.comboTimer > 0) {
+          this.comboTimer -= dt;
+          if (this.comboTimer <= 0) {
             this.combo = 1;
-            this.particles.explosion(this.player.x, this.player.y, '#00f0ff', 25);
-            if (this.player.lives <= 0) {
-              this.audio.stopMusic();
-              this.state = 'gameover';
+          }
+        }
+
+        // Collisions: Player bullets vs enemies & boss
+        for (let bi = this.bullets.bullets.length - 1; bi >= 0; bi--) {
+          const b = this.bullets.bullets[bi];
+          if (!b.isPlayer) continue;
+
+          // Check boss collision
+          if (this.enemies.boss && circleCollide(b, this.enemies.boss)) {
+            this.enemies.boss.hp--;
+            this.bullets.bullets.splice(bi, 1);
+            this.particles.spawn(b.x, b.y, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, '#9d00ff', 6, 0.3);
+            if (this.enemies.boss.hp <= 0) {
+              this.levels.bossDefeated = true;
+              this.audio.playBoom();
+              this.particles.explosion(this.enemies.boss.x, this.enemies.boss.y, '#9d00ff', 50);
+              this.score += CONFIG.scoring.boss * this.combo;
+              this.enemies.boss = null;
+            }
+            continue;
+          }
+
+          // Check standard enemy collision
+          let hitEnemy = false;
+          for (let ei = this.enemies.enemies.length - 1; ei >= 0; ei--) {
+            const e = this.enemies.enemies[ei];
+            if (circleCollide(b, e)) {
+              e.hp--;
+              hitEnemy = true;
+              this.particles.spawn(b.x, b.y, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, '#ff007f', 5, 0.3);
+              if (e.hp <= 0) {
+                this.audio.playBoom();
+                this.particles.explosion(e.x, e.y, e.type === 'tank' ? '#ff7700' : '#ff007f', 30);
+                this.score += e.scoreValue * this.combo;
+                this.combo = Math.min(8, this.combo + 1);
+                this.comboTimer = 4.0;
+
+                // Tank drops powerup
+                if (e.type === 'tank') {
+                  const pType = this.rng.choice(['flare', 'aegis', 'magnet']);
+                  this.powerups.spawn(e.x, e.y, pType);
+                }
+
+                this.enemies.enemies.splice(ei, 1);
+              }
+              break;
+            }
+          }
+          if (hitEnemy) {
+            this.bullets.bullets.splice(bi, 1);
+          }
+        }
+
+        // Collisions: Enemy bullets vs player
+        for (let bi = this.bullets.bullets.length - 1; bi >= 0; bi--) {
+          const b = this.bullets.bullets[bi];
+          if (b.isPlayer) continue;
+          if (circleCollide(b, this.player)) {
+            this.bullets.bullets.splice(bi, 1);
+            this.audio.playHit();
+            const lost = this.player.hit();
+            if (lost) {
+              this.combo = 1;
+              this.particles.explosion(this.player.x, this.player.y, '#00f0ff', 25);
+              if (this.player.lives <= 0) {
+                this.audio.stopMusic();
+                this.state = 'gameover';
+              }
             }
           }
         }
-      }
 
-      // Collisions: Player vs Powerups
-      for (let pi = this.powerups.powerups.length - 1; pi >= 0; pi--) {
-        const p = this.powerups.powerups[pi];
-        if (circleCollide(p, this.player)) {
-          this.audio.playPickup();
-          if (p.type === 'flare') this.player.flareTimer = 8.0;
-          if (p.type === 'aegis') this.player.aegisShield = true;
-          if (p.type === 'magnet') this.player.magnetTimer = 8.0;
-          this.powerups.powerups.splice(pi, 1);
+        // Collisions: Player vs Powerups
+        for (let pi = this.powerups.powerups.length - 1; pi >= 0; pi--) {
+          const p = this.powerups.powerups[pi];
+          if (circleCollide(p, this.player)) {
+            this.audio.playPickup();
+            if (p.type === 'flare') this.player.flareTimer = 8.0;
+            if (p.type === 'aegis') this.player.aegisShield = true;
+            if (p.type === 'magnet') this.player.magnetTimer = 8.0;
+            this.powerups.powerups.splice(pi, 1);
+          }
         }
-      }
 
-      if (this.levels.levelCompleted) {
-        if (this.levels.currentLevel < this.levels.maxLevels) {
-          this.state = 'levelclear';
-        } else {
-          this.audio.stopMusic();
-          this.state = 'victory';
+        if (this.levels.levelCompleted) {
+          if (this.levels.currentLevel < this.levels.maxLevels) {
+            this.state = 'levelclear';
+          } else {
+            this.audio.stopMusic();
+            this.state = 'victory';
+          }
         }
       }
     } else if (this.state === 'levelclear') {
@@ -318,11 +327,14 @@ class Game {
       this.player.draw(this.ctx);
     }
     this.hud.draw(this.ctx, this.state, this.player, this.score, this.combo, this.levels);
+    if (this.state === 'play' && this.paused) {
+      this.hud.drawPause(this.ctx);
+    }
   }
 
   loop(time) {
     if (this.isHarness) return;
-    const dt = Math.min(0.1, (time - this.lastTime) / 1000);
+    const dt = Math.min((time - this.lastTime) / 1000, 0.05);
     this.lastTime = time;
 
     this.update(dt);

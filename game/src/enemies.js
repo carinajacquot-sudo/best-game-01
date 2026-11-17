@@ -59,16 +59,16 @@ export class EnemyManager {
     // Update enemies
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.x += e.vx;
+      e.x += e.vx * dt * 60;
       if (e.type === 'drifter') {
-        e.y += e.vy;
+        e.y += e.vy * dt * 60;
       } else if (e.type === 'weaver') {
         e.time += dt * 4;
         e.y = e.startY + Math.sin(e.time) * 80;
       }
 
       // Enemy shooting occasionally
-      if (Math.random() < 0.008 && e.x < 1100) {
+      if (Math.random() < 1 - Math.pow(1 - 0.008, dt * 60) && e.x < 1100) {
         bulletManager.spawn(e.x - 20, e.y, -5, 0, false, '#ff007f');
       }
 
@@ -81,9 +81,9 @@ export class EnemyManager {
     if (this.boss) {
       const b = this.boss;
       if (b.x > 1050) {
-        b.x -= 2;
+        b.x -= 2 * dt * 60;
       } else {
-        b.y += b.vy;
+        b.y += b.vy * dt * 60;
         if (b.y < 120 || b.y > 440) {
           b.vy *= -1;
         }

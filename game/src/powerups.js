@@ -18,17 +18,19 @@ export class PowerupManager {
   update(dt, player) {
     for (let i = this.powerups.length - 1; i >= 0; i--) {
       const p = this.powerups[i];
-      p.x += p.vx;
+      p.x += p.vx * dt * 60;
       p.life -= dt;
 
       // Magnet attraction if active
       if (player.magnetTimer > 0) {
         const dx = player.x - p.x;
         const dy = player.y - p.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 300) {
-          p.x += (dx / dist) * 6;
-          p.y += (dy / dist) * 6;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > 1 && distSq < 300 * 300) {
+          const dist = Math.sqrt(distSq);
+          const step = Math.min(6 * dt * 60, dist);
+          p.x += (dx / dist) * step;
+          p.y += (dy / dist) * step;
         }
       }
 

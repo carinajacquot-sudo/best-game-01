@@ -1,4 +1,4 @@
-// input.js: Keyboard, mouse, and touch input handlers, tracking keys and actions.
+// input.js: Keyboard and mouse input handlers, tracking keys and actions.
 
 export class InputHandler {
   constructor() {
@@ -37,11 +37,27 @@ export class InputHandler {
       this.mouse.down = false;
     };
 
+    this._onBlur = () => {
+      this.keys.clear();
+      this.pressed.clear();
+      this.mouse.down = false;
+    };
+
+    this._onVisibilityChange = () => {
+      if (document.hidden) {
+        this.keys.clear();
+        this.pressed.clear();
+        this.mouse.down = false;
+      }
+    };
+
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('mouseup', this._onMouseUp);
+    window.addEventListener('blur', this._onBlur);
+    document.addEventListener('visibilitychange', this._onVisibilityChange);
   }
 
   isDown(code) {
@@ -79,5 +95,7 @@ export class InputHandler {
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
+    window.removeEventListener('blur', this._onBlur);
+    document.removeEventListener('visibilitychange', this._onVisibilityChange);
   }
 }

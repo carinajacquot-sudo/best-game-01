@@ -186,4 +186,23 @@ export class HUD {
 
     ctx.restore();
   }
+
+  drawPause(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(5, 2, 10, 0.75)';
+    ctx.fillRect(0, 0, 1280, 720);
+
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = '#00f0ff';
+    ctx.font = 'bold 72px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED', 640, 300);
+
+    ctx.shadowBlur = 15;
+    ctx.font = '24px Courier New';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('PRESS [P] TO RESUME', 640, 380);
+    ctx.restore();
+  }
 }

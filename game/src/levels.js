@@ -9,6 +9,7 @@ export class LevelManager {
     this.lanternsLit = 0;
     this.targetLanterns = 3; // 3 per level -> 9 total
     this.levelCompleted = false;
+    this.bossDefeated = false;
   }
 
   reset() {
@@ -17,6 +18,7 @@ export class LevelManager {
     this.enemiesSpawnedInLevel = 0;
     this.lanternsLit = 0;
     this.levelCompleted = false;
+    this.bossDefeated = false;
   }
 
   update(dt, enemyManager, rng) {
@@ -49,7 +51,7 @@ export class LevelManager {
     if (this.currentLevel < 3 && this.enemiesSpawnedInLevel >= 12 && enemyManager.enemies.length === 0) {
       this.lanternsLit += 3;
       this.levelCompleted = true;
-    } else if (this.currentLevel === 3 && enemyManager.boss && enemyManager.boss.hp <= 0) {
+    } else if (this.currentLevel === 3 && this.bossDefeated) {
       this.lanternsLit = 9;
       this.levelCompleted = true;
     }

@@ -6,6 +6,9 @@ export class ParticleManager {
   }
 
   spawn(x, y, vx, vy, color, size, life, shape = 'circle') {
+    if (this.particles.length >= 400) {
+      this.particles.shift();
+    }
     this.particles.push({
       x, y, vx, vy, color, size, life, maxLife: life, shape
     });
@@ -26,8 +29,8 @@ export class ParticleManager {
   update(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
       p.life -= dt;
       p.size = Math.max(0, p.size - dt * 2);
       if (p.life <= 0 || p.size <= 0) {

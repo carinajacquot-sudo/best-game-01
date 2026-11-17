@@ -16,6 +16,10 @@ export class Background {
     this.buildings1 = this.generateSkyline(12, 180, 320, 1.0);
     this.buildings2 = this.generateSkyline(18, 100, 220, 2.0);
     this.buildings3 = this.generateSkyline(26, 50, 140, 3.5);
+
+    this.cachedCtx = null;
+    this.bgGrad = null;
+    this.sunGrad = null;
   }
 
   generateSkyline(count, minH, maxH, speedFactor) {
@@ -32,18 +36,30 @@ export class Background {
 
   update(dt, scrollSpeed = 1) {
     for (const star of this.stars) {
-      star.x -= star.speed * scrollSpeed;
+      star.x -= star.speed * scrollSpeed * dt * 60;
       if (star.x < 0) star.x = 1280;
     }
   }
 
   draw(ctx) {
+    if (!this.bgGrad || this.cachedCtx !== ctx) {
+      this.cachedCtx = ctx;
+      this.bgGrad = ctx.createLinearGradient(0, 0, 0, 720);
+      this.bgGrad.addColorStop(0, '#05020a');
+      this.bgGrad.addColorStop(0.6, '#150a2b');
+      this.bgGrad.addColorStop(1, '#2b0c3a');
+
+      const sunX = 640;
+      const sunY = 320;
+      const sunRadius = 160;
+      this.sunGrad = ctx.createRadialGradient(sunX, sunY - 40, 10, sunX, sunY, sunRadius);
+      this.sunGrad.addColorStop(0, '#ffea00');
+      this.sunGrad.addColorStop(0.5, '#ff4400');
+      this.sunGrad.addColorStop(1, '#ff007f');
+    }
+
     // Deep gradient background
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, 720);
-    bgGrad.addColorStop(0, '#05020a');
-    bgGrad.addColorStop(0.6, '#150a2b');
-    bgGrad.addColorStop(1, '#2b0c3a');
-    ctx.fillStyle = bgGrad;
+    ctx.fillStyle = this.bgGrad;
     ctx.fillRect(0, 0, 1280, 720);
 
     // Stars
@@ -59,15 +75,10 @@ export class Background {
     const sunY = 320;
     const sunRadius = 160;
 
-    const sunGrad = ctx.createRadialGradient(sunX, sunY - 40, 10, sunX, sunY, sunRadius);
-    sunGrad.addColorStop(0, '#ffea00');
-    sunGrad.addColorStop(0.5, '#ff4400');
-    sunGrad.addColorStop(1, '#ff007f');
-
     ctx.save();
     ctx.beginPath();
     ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
-    ctx.fillStyle = sunGrad;
+    ctx.fillStyle = this.sunGrad;
     ctx.shadowColor = '#ff007f';
     ctx.shadowBlur = 40;
     ctx.fill();
@@ -91,7 +102,7 @@ export class Background {
     this.drawSkylineLayer(ctx, this.buildings3, '#2a0d4a');
 
     // Perspective floor grid (cyberpunk horizon grid)
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.25);';
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     const horizonY = 560;
@@ -110,14 +121,17 @@ export class Background {
 
   drawSkylineLayer(ctx, buildings, color) {
     ctx.fillStyle = color;
-    for (const b of buildings) {
+    for (let bIndex = 0; bIndex < buildings.length; bIndex++) {
+      const b = buildings[bIndex];
       const y = 560 - b.h;
       ctx.fillRect(b.x, y, b.w, b.h);
       // Windows glow
       ctx.fillStyle = 'rgba(0, 240, 255, 0.3)';
-      for (let wy = y + 15; wy < 540; wy += 30) {
-        for (let wx = b.x + 10; wx < b.x + b.w - 10; wx += 20) {
-          if ((wx + wy) % 4 === 0) {
+      let row = 0;
+      for (let wy = y + 15; wy < 540; wy += 30, row++) {
+        let col = 0;
+        for (let wx = b.x + 10; wx < b.x + b.w - 10; wx += 20, col++) {
+          if ((col + row * 3 + bIndex) % 4 === 0) {
             ctx.fillRect(wx, wy, 8, 12);
           }
         }

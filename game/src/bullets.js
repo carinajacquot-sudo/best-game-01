@@ -14,8 +14,8 @@ export class BulletManager {
   update(dt) {
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
-      b.x += b.vx;
-      b.y += b.vy;
+      b.x += b.vx * dt * 60;
+      b.y += b.vy * dt * 60;
       if (b.x < -50 || b.x > 1330 || b.y < -50 || b.y > 770) {
         this.bullets.splice(i, 1);
       }

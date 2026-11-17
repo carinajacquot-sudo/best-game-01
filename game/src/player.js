@@ -20,13 +20,14 @@ export class Player {
   update(dt, input) {
     const dx = input.getAxisX();
     const dy = input.getAxisY();
+    const moveSpeed = this.speed * dt * 60;
     if (dx !== 0 && dy !== 0) {
       // Normalize diagonal movement
-      this.x += dx * 0.7071 * this.speed;
-      this.y += dy * 0.7071 * this.speed;
+      this.x += dx * 0.7071 * moveSpeed;
+      this.y += dy * 0.7071 * moveSpeed;
     } else {
-      this.x += dx * this.speed;
-      this.y += dy * this.speed;
+      this.x += dx * moveSpeed;
+      this.y += dy * moveSpeed;
     }
 
     // Keep within bounds
