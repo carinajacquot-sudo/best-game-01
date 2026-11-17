@@ -503,6 +503,9 @@ class Game {
               this.popups.push({ x: boss.x, y: boss.y, text: '+' + points, t: 0 });
               this.bullets.bullets = this.bullets.bullets.filter(b => b.isPlayer);
               this.beginBossDefeatCinematic(boss);
+              // The bullets array was just replaced by a shorter one — stop iterating it,
+              // otherwise the next index reads past the end (undefined.isPlayer crash).
+              break;
             }
             continue;
           }
