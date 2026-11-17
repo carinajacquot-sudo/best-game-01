@@ -38,22 +38,6 @@ export class Background {
     this.bgGrad = null;
     this.sunGrad = null;
     this.horizonHazeGrad = null;
-
-    // Painted nebula layer (v6): static, frame-independent asset. Keeps the
-    // procedural sector themes — drawn additively at modest alpha, silently
-    // skipped on load failure so the procedural sky always remains.
-    this.nebula = new Image();
-    this.nebula.src = 'assets/v6/nebula-sky.jpg';
-    // Painted far skyline (v6): distant silhouette city, screen-blended at the
-    // horizon between nebula and the procedural near skyline — layered 2.5D depth.
-    this.farCity = new Image();
-    this.farCity.src = 'assets/v6/far-city.jpg';
-    this.assetsReady = new Promise((resolve) => {
-      let settled = 0;
-      const done = () => { settled += 1; if (settled >= 2) resolve(true); };
-      this.nebula.onload = done; this.nebula.onerror = done;
-      this.farCity.onload = done; this.farCity.onerror = done;
-    });
   }
 
   setSector(sector) {
@@ -130,24 +114,6 @@ export class Background {
     // Deep gradient background
     ctx.fillStyle = this.bgGrad;
     ctx.fillRect(0, 0, 1280, 720);
-
-    // Painted nebula (v6) — additive glow that enriches, never re-tints, the sector palette
-    if (this.nebula && this.nebula.complete && this.nebula.naturalWidth) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = 0.5;
-      ctx.drawImage(this.nebula, 0, 0, 1280, 720);
-      ctx.restore();
-    }
-
-    // Painted far skyline (v6) — distant silhouette band, true 2.5D parallax layer
-    if (this.farCity && this.farCity.complete && this.farCity.naturalWidth) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = 0.92;
-      ctx.drawImage(this.farCity, 0, -118, 1280, 720);
-      ctx.restore();
-    }
 
     // Horizon haze band (2.5D atmospheric perspective)
     ctx.save();

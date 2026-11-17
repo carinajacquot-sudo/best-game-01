@@ -3,20 +3,6 @@ import { CONFIG } from './config.js';
 
 export class EnemyManager {
   constructor(rng = null) {
-    // Painted finale boss render (v6): used only for sector-10 "Crown of Silence".
-    // Static asset; frame-independent; vector hulls remain for sectors 1-9.
-    this.glassManta = new Image();
-    this.glassManta.src = 'assets/v6/glass-manta.jpg';
-    this.glassMantaReady = new Promise((resolve) => {
-      this.glassManta.onload = () => resolve(true);
-      this.glassManta.onerror = () => resolve(false);
-    });
-    this.bossSprite = new Image();
-    this.bossSprite.src = 'assets/v6/hollow-crown-boss.jpg';
-    this.assetsReady = new Promise((resolve) => {
-      this.bossSprite.onload = () => resolve(true);
-      this.bossSprite.onerror = () => resolve(false);
-    });
     this.rng = rng;
     this.enemies = [];
     this.boss = null;
@@ -98,7 +84,8 @@ export class EnemyManager {
     else {
       b.y += b.vy * dt * (b.phase === 3 ? 1.35 : 1);
       if (b.y < 122 || b.y > 495) b.vy *= -1;
-      b.x = 1035 + Math.sin(performance.now() / 1100) * 22;
+      b.drift = (b.drift || 0) + dt;
+      b.x = 1035 + Math.sin(b.drift) * 22;
     }
     b.phase = b.hp <= b.maxHp * 0.28 ? 3 : b.hp <= b.maxHp * 0.62 ? 2 : 1;
     b.angle += dt * (0.8 + b.phase * 0.36);
@@ -255,27 +242,10 @@ export class EnemyManager {
     ctx.fill();
     ctx.restore();
 
-    // Painted finale (v6): sector 10 "Crown of Silence" — additive sprite, rings/eyes vector skipped
-    if (b.style === 0 && this.glassManta && this.glassManta.complete && this.glassManta.naturalWidth) {
-      ctx.save();
-      ctx.translate(b.x, b.y);
-      ctx.globalCompositeOperation = 'screen';
-      ctx.drawImage(this.glassManta, -185, -170, 370, 340);
-      ctx.restore();
-      return;
-    }
-    if (b.style === 9 && this.bossSprite && this.bossSprite.complete && this.bossSprite.naturalWidth) {
-      ctx.save();
-      ctx.translate(b.x, b.y);
-      ctx.globalCompositeOperation = 'screen';
-      ctx.drawImage(this.bossSprite, -170, -98, 340, 196);
-      ctx.restore();
-      return;
-    }
     ctx.save();
     ctx.translate(b.x, b.y);
     const color = b.phase === 1 ? b.color : b.phase === 2 ? '#ff955d' : '#ff4f9f';
-    ctx.rotate(Math.sin(performance.now() / 430) * 0.035);
+    ctx.rotate(Math.sin(b.angle * 2.0) * 0.035);
     ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.shadowColor = color; ctx.shadowBlur = 22;
     // Concentric, original crown-orbit rings; telegraph glow intensifies before each attack.
     for (let ring = 0; ring < 3; ring++) {

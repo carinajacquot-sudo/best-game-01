@@ -69,19 +69,6 @@ class Game {
     this.hud = new HUD();
 
     this.keyArt = null;
-    this.fxSprites = {
-      detonation: new Image(),
-      nova: new Image()
-    };
-    this.fxSprites.detonation.src = 'assets/v6/fx-detonation.jpg';
-    this.fxSprites.nova.src = 'assets/v6/fx-muzzle-nova.jpg';
-    this.fxReady = new Promise((resolve) => {
-      let settled = 0;
-      const done = () => { settled += 1; if (settled >= 2) resolve(true); };
-      this.fxSprites.detonation.onload = done; this.fxSprites.detonation.onerror = done;
-      this.fxSprites.nova.onload = done; this.fxSprites.nova.onerror = done;
-    });
-    this.particles.setFxSprites(this.fxSprites);
     this.popups = [];
 
     this.state = 'title'; // title, howto, play, levelclear, gameover, victory
@@ -131,12 +118,6 @@ class Game {
   async prepareScreenshot(shot) {
     try {
       await loadScreenshotFonts();
-      // Wait for painted assets (nebula + finale boss) so captures don't race decode;
-      // bounded so a hung decode can never hang the harness.
-      const assetWaits = [this.background?.assetsReady, this.enemies?.assetsReady, this.enemies?.glassMantaReady, this.fxReady].filter(Boolean);
-      if (assetWaits.length) {
-        await Promise.race([Promise.all(assetWaits), new Promise((r) => setTimeout(r, 3000))]);
-      }
       // Reuse the canvas built in init(); only rebuild if it is somehow missing.
       if (!this.keyArt) {
         this.keyArt = keyArtCanvas();
@@ -341,7 +322,6 @@ class Game {
           this.particles.shockwave(this.player.x, this.player.y, '#ffee88', 260, 0.9, 9);
           this.particles.shockwave(this.player.x, this.player.y, '#ff2da0', 190, 0.75, 6);
           this.particles.shockwave(this.player.x, this.player.y, '#46f8ff', 120, 0.6, 4);
-          this.particles.novaFx(this.player.x, this.player.y);
           this.particles.motes(this.player.x, this.player.y, '#fff3c2', 16);
           for (let ei = this.enemies.enemies.length - 1; ei >= 0; ei--) {
             const e = this.enemies.enemies[ei];

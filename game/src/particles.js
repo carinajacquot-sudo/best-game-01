@@ -41,28 +41,6 @@ export class ParticleManager {
     this._push({ x, y, vx: 0, vy: 0, color, size, life, maxLife: life, shape: 'pool' });
   }
 
-  setFxSprites(sprites) {
-    this.fxSprites = sprites;
-  }
-
-  detonationFx(x, y, scale = 1) {
-    const img = this.fxSprites && this.fxSprites.detonation;
-    if (!img || !img.complete || !img.naturalWidth) return;
-    this._push({
-      x, y, vx: 0, vy: 0, color: '#ffffff', size: 150 * scale, life: 0.62, maxLife: 0.62,
-      shape: 'fx-detonation'
-    });
-  }
-
-  novaFx(x, y) {
-    const img = this.fxSprites && this.fxSprites.nova;
-    if (!img || !img.complete || !img.naturalWidth) return;
-    this._push({
-      x, y, vx: 0, vy: 0, color: '#ffffff', size: 300, life: 0.55, maxLife: 0.55,
-      shape: 'fx-nova'
-    });
-  }
-
   explosion(x, y, color = '#00f0ff', count = 25) {
     const rand = () => (this.rng ? this.rng.next() : Math.random());
     for (let i = 0; i < count; i++) {
@@ -78,8 +56,8 @@ export class ParticleManager {
     this.shockwave(x, y, color, 120 + rand() * 60, 0.65, 5);
     this.groundPool(x, y, color, 0.45, 64);
     this.motes(x, y, '#ffe8b0', 7);
-    // Painted detonation flash (v6) on significant bursts only (kills, boss hits)
-    if (count >= 20) this.detonationFx(x, y, count >= 30 ? 1.15 : 0.9);
+    // Larger bursts get a second, wider shockwave for the 2.5D punch
+    if (count >= 30) this.shockwave(x, y, '#ffffff', 190, 0.8, 7);
   }
 
   update(dt) {
@@ -103,22 +81,6 @@ export class ParticleManager {
       ctx.fillStyle = p.color;
       ctx.shadowColor = p.color;
       ctx.shadowBlur = 8;
-      if (p.shape === 'fx-detonation' || p.shape === 'fx-nova') {
-        const t = 1 - alpha;
-        const grow = p.shape === 'fx-nova' ? 0.45 + t * 1.15 : 0.55 + t * 0.85;
-        const w = p.size * grow;
-        const img = p.shape === 'fx-nova'
-          ? this.fxSprites && this.fxSprites.nova
-          : this.fxSprites && this.fxSprites.detonation;
-        if (img && img.complete && img.naturalWidth) {
-          ctx.save();
-          ctx.globalCompositeOperation = 'screen';
-          ctx.globalAlpha = alpha * alpha;
-          ctx.drawImage(img, p.x - w / 2, p.y - w / 2, w, w);
-          ctx.restore();
-        }
-        continue;
-      }
       if (p.shape === 'shockwave') {
         const t = 1 - alpha;
         const r = p.radius0 + (p.size - p.radius0) * t;
