@@ -7,7 +7,7 @@ import { AudioManager } from './audio.js';
 import { Background } from './background.js';
 import { ParticleManager } from './particles.js';
 import { BulletManager } from './bullets.js';
-import { Player } from './player.js';
+import { Player, SHIPS } from './player.js';
 import { EnemyManager } from './enemies.js';
 import { PowerupManager } from './powerups.js';
 import { LevelManager } from './levels.js';
@@ -31,7 +31,7 @@ async function loadScreenshotFonts() {
     ['112px Monoton', 'EMBER'],
     ['54px Monoton', 'W I N G'],
     ['50px Monoton', 'THE CITY REMEMBERS'],
-    ['15px Orbitron', 'ALL 9 LANTERNS RELIGHTED'],
+    ['15px Orbitron', 'ALL 10 DISTRICTS RECLAIMED'],
     ['700 34px Orbitron', '12850'],
     ['600 19px Orbitron', '[ ENTER ] REIGNITE']
   ];
@@ -54,17 +54,34 @@ class Game {
     this.ctx = this.canvas.getContext('2d');
     this.input = new InputHandler();
     this.audio = new AudioManager();
+    const unlockAudio = () => this.audio.init();
+    document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+    window.addEventListener('keydown', unlockAudio, { once: true, passive: true });
     this.rng = new RNG((Math.random() * 0xFFFFFFFF) >>> 0);
     this.background = new Background(this.rng);
     this.particles = new ParticleManager(this.rng);
     this.bullets = new BulletManager();
-    this.player = new Player(200, 360);
+    this.shipIndex = 0;
+    this.player = new Player(200, 360, this.shipIndex);
     this.enemies = new EnemyManager(this.rng);
     this.powerups = new PowerupManager();
     this.levels = new LevelManager();
     this.hud = new HUD();
 
     this.keyArt = null;
+    this.fxSprites = {
+      detonation: new Image(),
+      nova: new Image()
+    };
+    this.fxSprites.detonation.src = 'assets/v6/fx-detonation.jpg';
+    this.fxSprites.nova.src = 'assets/v6/fx-muzzle-nova.jpg';
+    this.fxReady = new Promise((resolve) => {
+      let settled = 0;
+      const done = () => { settled += 1; if (settled >= 2) resolve(true); };
+      this.fxSprites.detonation.onload = done; this.fxSprites.detonation.onerror = done;
+      this.fxSprites.nova.onload = done; this.fxSprites.nova.onerror = done;
+    });
+    this.particles.setFxSprites(this.fxSprites);
     this.popups = [];
 
     this.state = 'title'; // title, howto, play, levelclear, gameover, victory
@@ -72,6 +89,8 @@ class Game {
     this.combo = 1;
     this.comboTimer = 0;
     this.paused = false;
+    this.screenShake = 0;
+    this.screenFlash = 0;
 
     this.lastTime = performance.now();
     this.isHarness = false;
@@ -112,6 +131,12 @@ class Game {
   async prepareScreenshot(shot) {
     try {
       await loadScreenshotFonts();
+      // Wait for painted assets (nebula + finale boss) so captures don't race decode;
+      // bounded so a hung decode can never hang the harness.
+      const assetWaits = [this.background?.assetsReady, this.enemies?.assetsReady, this.enemies?.glassMantaReady, this.fxReady].filter(Boolean);
+      if (assetWaits.length) {
+        await Promise.race([Promise.all(assetWaits), new Promise((r) => setTimeout(r, 3000))]);
+      }
       // Reuse the canvas built in init(); only rebuild if it is somehow missing.
       if (!this.keyArt) {
         this.keyArt = keyArtCanvas();
@@ -143,13 +168,14 @@ class Game {
       this.state = 'title';
     } else if (shot === 'play') {
       this.state = 'play';
-      this.levels.currentLevel = 2;
+      this.levels.currentLevel = 5;
       this.levels.lanternsLit = 4;
       this.score = 1450;
       this.combo = 4;
       this.player.x = 250;
       this.player.y = 360;
       this.player.flareTimer = 6.0;
+      this.player.pulseCharge = 100;
 
       // Spawn at least 7 enemies spread across the right two thirds of the screen: mix of drifters, 2+ weavers, tank
       this.enemies.spawnWeaver(700, 220);
@@ -157,8 +183,8 @@ class Game {
       this.enemies.spawnTank(1050, 360);
       this.enemies.spawnDrifter(550, 150);
       this.enemies.spawnDrifter(680, 450);
-      this.enemies.spawnDrifter(820, 320);
-      this.enemies.spawnDrifter(1150, 200);
+      this.enemies.spawnPrism(820, 320);
+      this.enemies.spawnLancer(1150, 200);
 
       // Fire several player bullets in flight including triple-shot flare shots
       this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
@@ -179,21 +205,23 @@ class Game {
     } else if (shot === 'boss') {
       this.state = 'play';
       this.levels.currentLevel = this.levels.maxLevels;
-      this.levels.lanternsLit = 6;
+      this.levels.lanternsLit = 9;
       this.score = 9800;
       this.combo = 6;
       this.player.x = 250;
       this.player.y = 430;
       this.player.flareTimer = 6.0;
+      this.player.pulseCharge = 100;
 
-      this.enemies.spawnBoss();
-      this.enemies.boss.hp = 22;
+      this.enemies.spawnBoss(this.levels.currentLevel);
+      this.enemies.boss.hp = Math.floor(this.enemies.boss.maxHp * 0.25);
+      this.enemies.boss.phase = 3;
 
       this.enemies.bossAttack(this.enemies.boss, this.bullets);
       this.enemies.bossAttack(this.enemies.boss, this.bullets);
 
-      this.particles.explosion(this.enemies.boss.x - 40, this.enemies.boss.y - 30, '#9d00ff', 35);
-      this.particles.explosion(this.enemies.boss.x + 30, this.enemies.boss.y + 30, '#ff007f', 30);
+      this.particles.explosion(this.enemies.boss.x - 40, this.enemies.boss.y - 30, this.enemies.boss.color, 35);
+      this.particles.explosion(this.enemies.boss.x + 30, this.enemies.boss.y + 30, '#ffe27a', 30);
 
       this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
       this.bullets.spawn(this.player.x + 10, this.player.y - 15, 14, -2, true, '#ffee00');
@@ -207,7 +235,7 @@ class Game {
     } else if (shot === 'end') {
       this.state = 'victory';
       this.score = 12850;
-      this.levels.lanternsLit = 9;
+      this.levels.lanternsLit = 10;
     }
   }
 
@@ -215,7 +243,10 @@ class Game {
     this.score = 0;
     this.combo = 1;
     this.comboTimer = 0;
-    this.player = new Player(200, 360);
+    this.audio.setSector(1);
+    this.audio.setBossMode(false);
+    this.background.setSector(1);
+    this.player = new Player(200, 360, this.shipIndex);
     this.enemies = new EnemyManager(this.rng);
     this.powerups = new PowerupManager();
     this.bullets = new BulletManager();
@@ -225,10 +256,13 @@ class Game {
   }
 
   update(dt) {
+    this.screenShake = Math.max(0, this.screenShake - dt * 34);
+    this.screenFlash = Math.max(0, this.screenFlash - dt * 1.8);
     // Handle global inputs
     if (this.input.wasPressed('KeyM')) {
       this.audio.toggleMute();
     }
+    const pulsePressed = this.input.wasPressed('KeyX');
 
     // Update popups on any state
     for (let pi = this.popups.length - 1; pi >= 0; pi--) {
@@ -253,8 +287,22 @@ class Game {
     }
 
     if (this.state === 'title') {
+      let shipChanged = false;
+      if (this.input.wasPressed('ArrowLeft') || this.input.wasPressed('KeyQ')) {
+        this.shipIndex = (this.shipIndex + SHIPS.length - 1) % SHIPS.length;
+        shipChanged = true;
+      }
+      if (this.input.wasPressed('ArrowRight') || this.input.wasPressed('KeyE')) {
+        this.shipIndex = (this.shipIndex + 1) % SHIPS.length;
+        shipChanged = true;
+      }
+      if (shipChanged) {
+        this.player = new Player(200, 360, this.shipIndex);
+        this.audio.playUI();
+      }
       if (this.input.wasPressed('Enter')) {
         this.audio.playUI();
+        this.audio.setSector(1);
         this.audio.startMusic();
         this.resetGame();
         this.state = 'play';
@@ -280,18 +328,77 @@ class Game {
         this.background.update(dt, 1);
         this.player.update(dt, this.input);
 
+        // Nova Pulse: a fully charged, original crowd-control move. It clears hostile fire
+        // and cracks every foe, including a small chunk of the Crown's armor.
+        if (pulsePressed && this.player.pulseCharge >= 100) {
+          this.player.pulseCharge = 0;
+          this.audio.playPulse();
+          this.screenShake = Math.max(this.screenShake, 15);
+          this.screenFlash = Math.max(this.screenFlash, 0.38);
+          this.bullets.bullets = this.bullets.bullets.filter(b => b.isPlayer);
+          this.particles.explosion(this.player.x, this.player.y, '#ffe27a', 52);
+          // 2.5D nova: twin chromatic shockwave rings + ember motes
+          this.particles.shockwave(this.player.x, this.player.y, '#ffee88', 260, 0.9, 9);
+          this.particles.shockwave(this.player.x, this.player.y, '#ff2da0', 190, 0.75, 6);
+          this.particles.shockwave(this.player.x, this.player.y, '#46f8ff', 120, 0.6, 4);
+          this.particles.novaFx(this.player.x, this.player.y);
+          this.particles.motes(this.player.x, this.player.y, '#fff3c2', 16);
+          for (let ei = this.enemies.enemies.length - 1; ei >= 0; ei--) {
+            const e = this.enemies.enemies[ei];
+            e.hp -= 2;
+            this.particles.explosion(e.x, e.y, '#ffe27a', 14);
+            if (e.hp <= 0) {
+              this.audio.playBoom();
+              this.particles.explosion(e.x, e.y, '#ff9a62', 26);
+              const points = e.scoreValue * this.combo;
+              this.score += points;
+              this.popups.push({ x: e.x, y: e.y, text: '+' + points, t: 0 });
+              this.combo = Math.min(8, this.combo + 1);
+              this.comboTimer = 4.0;
+              this.player.pulseCharge = Math.min(25, this.player.pulseCharge + 15);
+              if (e.type === 'tank') this.powerups.spawn(e.x, e.y, this.rng.choice(['flare', 'aegis', 'magnet']));
+              this.enemies.enemies.splice(ei, 1);
+            }
+          }
+          if (this.enemies.boss) {
+            this.enemies.boss.hp = Math.max(0, this.enemies.boss.hp - 4);
+            this.particles.explosion(this.enemies.boss.x, this.enemies.boss.y, '#ffe27a', 28);
+            if (this.enemies.boss.hp <= 0) {
+              const boss = this.enemies.boss;
+              this.levels.bossDefeated = true;
+              this.audio.playBoom();
+              this.particles.explosion(boss.x, boss.y, '#ffe27a', 76);
+              const points = boss.scoreValue * this.combo;
+              this.score += points;
+              this.popups.push({ x: boss.x, y: boss.y, text: '+' + points, t: 0 });
+              this.bullets.bullets = this.bullets.bullets.filter(b => b.isPlayer);
+              this.enemies.boss = null;
+            }
+          }
+        }
+
         // Firing
         if (this.input.isFiring() && this.player.canFire()) {
           this.audio.playShoot();
-          this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
+          const weapon = this.player.profile.weapon;
+          const shotColor = this.player.profile.color;
+          if (weapon === 'twin') {
+            this.bullets.spawn(this.player.x + 14, this.player.y - 10, 14, -0.12, true, shotColor);
+            this.bullets.spawn(this.player.x + 14, this.player.y + 10, 14, 0.12, true, shotColor);
+          } else if (weapon === 'burst') {
+            for (const spread of [-0.9, 0, 0.9]) this.bullets.spawn(this.player.x + 16, this.player.y, 13, spread, true, shotColor);
+          } else {
+            this.bullets.spawn(this.player.x + 20, this.player.y, weapon === 'needle' ? 16 : 14, 0, true, shotColor);
+          }
           if (this.player.flareTimer > 0) {
-            this.bullets.spawn(this.player.x + 10, this.player.y - 15, 14, -2, true, '#ffee00');
-            this.bullets.spawn(this.player.x + 10, this.player.y + 15, 14, 2, true, '#ffee00');
+            this.bullets.spawn(this.player.x + 10, this.player.y - 15, 14, -2, true, '#ffe27a');
+            this.bullets.spawn(this.player.x + 10, this.player.y + 15, 14, 2, true, '#ffe27a');
           }
         }
 
         this.bullets.update(dt);
-        this.enemies.update(dt, this.bullets);
+        this.enemies.update(dt, this.bullets, this.player);
+        this.audio.setBossMode(!!this.enemies.boss);
         this.powerups.update(dt, this.player);
         this.particles.update(dt);
         this.levels.update(dt, this.enemies, this.rng);
@@ -315,12 +422,15 @@ class Game {
             this.bullets.bullets.splice(bi, 1);
             this.particles.spawn(b.x, b.y, (this.rng.next() - 0.5) * 4, (this.rng.next() - 0.5) * 4, '#9d00ff', 6, 0.3);
             if (this.enemies.boss.hp <= 0) {
+              this.screenShake = Math.max(this.screenShake, 18);
+              this.screenFlash = Math.max(this.screenFlash, 0.32);
               this.levels.bossDefeated = true;
               this.audio.playBoom();
               this.particles.explosion(this.enemies.boss.x, this.enemies.boss.y, '#9d00ff', 50);
-              const points = CONFIG.scoring.boss * this.combo;
+              const points = this.enemies.boss.scoreValue * this.combo;
               this.score += points;
               this.popups.push({ x: this.enemies.boss.x, y: this.enemies.boss.y, text: '+' + points, t: 0 });
+              this.bullets.bullets = this.bullets.bullets.filter(b => b.isPlayer);
               this.enemies.boss = null;
             }
             continue;
@@ -342,6 +452,7 @@ class Game {
                 this.popups.push({ x: e.x, y: e.y, text: '+' + points, t: 0 });
                 this.combo = Math.min(8, this.combo + 1);
                 this.comboTimer = 4.0;
+                this.player.pulseCharge = Math.min(100, this.player.pulseCharge + 18);
 
                 // Tank drops powerup
                 if (e.type === 'tank') {
@@ -368,6 +479,8 @@ class Game {
             this.audio.playHit();
             const lost = this.player.hit();
             if (lost) {
+              this.screenShake = Math.max(this.screenShake, 11);
+              this.screenFlash = Math.max(this.screenFlash, 0.22);
               this.combo = 1;
               this.particles.explosion(this.player.x, this.player.y, '#00f0ff', 25);
               if (this.player.lives <= 0) {
@@ -403,6 +516,8 @@ class Game {
       if (this.input.wasPressed('Enter')) {
         this.audio.playUI();
         this.levels.nextLevel();
+        this.audio.setSector(this.levels.currentLevel);
+        this.background.setSector(this.levels.currentLevel);
         this.state = 'play';
       }
     } else if (this.state === 'gameover' || this.state === 'victory') {
@@ -417,6 +532,11 @@ class Game {
 
   render() {
     this.ctx.clearRect(0, 0, 1280, 720);
+    this.ctx.save();
+    if (this.screenShake > 0) {
+      const strength = this.screenShake;
+      this.ctx.translate((Math.random() - 0.5) * strength, (Math.random() - 0.5) * strength * 0.65);
+    }
     this.background.draw(this.ctx);
     this.particles.draw(this.ctx);
     this.powerups.draw(this.ctx);
@@ -437,7 +557,14 @@ class Game {
       this.ctx.fillText(p.text, p.x, p.y - 46 * p.t);
       this.ctx.restore();
     }
-    this.hud.draw(this.ctx, this.state, this.player, this.score, this.combo, this.levels, this.enemies.boss);
+    this.ctx.restore();
+    this.hud.draw(this.ctx, this.state, this.player, this.score, this.combo, this.levels, this.enemies.boss, this.player);
+    if (this.screenFlash > 0) {
+      this.ctx.save();
+      this.ctx.fillStyle = `rgba(255, 55, 110, ${this.screenFlash * 0.3})`;
+      this.ctx.fillRect(0, 0, 1280, 720);
+      this.ctx.restore();
+    }
     if (this.state === 'play' && this.paused) {
       this.hud.drawPause(this.ctx);
     }

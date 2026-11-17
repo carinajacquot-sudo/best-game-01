@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Ember Wing — Synthwave Arcade Shmup</title>
   <style>
     @font-face { font-family: 'Monoton'; src: url('assets/fonts/Monoton-Regular.ttf') format('truetype'); font-display: swap; }
@@ -17,6 +18,7 @@
       justify-content: center;
       width: 100vw;
       height: 100vh;
+      background-image: radial-gradient(ellipse at 50% 110%, rgba(255, 0, 127, .14), transparent 58%), radial-gradient(ellipse at 0% 0%, rgba(0, 240, 255, .08), transparent 42%);
     }
     #game-container {
       position: relative;
@@ -27,18 +29,81 @@
       aspect-ratio: 16 / 9;
       margin: auto;
       box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+      outline: 1px solid rgba(0, 240, 255, .16);
     }
     canvas {
       display: block;
       width: 100%;
       height: 100%;
       background: #080312;
+      touch-action: none;
+    }
+    #touch-controls { display: none; }
+    @media (pointer: coarse), (max-width: 800px) {
+      #touch-controls {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 5;
+        pointer-events: none;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+      }
+      .pad, .actions { position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); display: grid; gap: 8px; pointer-events: auto; }
+      .pad { left: max(14px, env(safe-area-inset-left)); grid-template: 54px 54px / 54px 54px 54px; }
+      .actions { right: max(14px, env(safe-area-inset-right)); grid-template-columns: 68px 68px; align-items: end; }
+      .utility { position: absolute; top: max(66px, calc(env(safe-area-inset-top) + 54px)); right: max(14px, env(safe-area-inset-right)); display: flex; gap: 8px; pointer-events: auto; }
+      .touch-button {
+        border: 1px solid rgba(0, 240, 255, .75);
+        border-radius: 16px;
+        color: #eaffff;
+        background: rgba(4, 10, 28, .72);
+        box-shadow: 0 0 14px rgba(0, 240, 255, .22), inset 0 0 12px rgba(0, 240, 255, .08);
+        font: 700 20px 'Orbitron', sans-serif;
+        display: grid;
+        place-items: center;
+        min-width: 54px;
+        min-height: 54px;
+        -webkit-tap-highlight-color: transparent;
+        backdrop-filter: blur(8px);
+        transition: transform .08s ease, background .12s ease, box-shadow .12s ease;
+      }
+      .touch-button:active, .touch-button.pressed { background: rgba(0, 190, 220, .65); transform: scale(.96); box-shadow: 0 0 22px rgba(0, 240, 255, .5); }
+      [data-key="ArrowUp"] { grid-area: 1 / 2; }
+      [data-key="ArrowLeft"] { grid-area: 2 / 1; }
+      [data-key="ArrowDown"] { grid-area: 2 / 2; }
+      [data-key="ArrowRight"] { grid-area: 2 / 3; }
+      .actions .touch-button { min-width: 68px; min-height: 68px; font-size: 12px; }
+      .utility .touch-button { min-width: 44px; min-height: 44px; border-radius: 12px; font-size: 14px; }
+      .actions [data-key="KeyX"] { grid-column: 1 / span 2; min-height: 42px; }
+      @media (orientation: portrait) {
+        .pad, .actions { bottom: max(12px, env(safe-area-inset-bottom)); transform: scale(.88); transform-origin: bottom left; }
+        .actions { transform-origin: bottom right; }
+      }
     }
   </style>
 </head>
 <body>
   <div id="game-container">
     <canvas id="gameCanvas" width="1280" height="720"></canvas>
+  </div>
+  <div id="touch-controls" aria-label="Commandes tactiles">
+    <div class="utility" aria-label="Options">
+      <button class="touch-button" data-key="KeyP" aria-label="Pause">Ⅱ</button>
+      <button class="touch-button" data-key="KeyM" aria-label="Activer ou couper le son">♫</button>
+    </div>
+    <div class="pad" aria-label="Déplacement">
+      <button class="touch-button" data-key="ArrowUp" aria-label="Haut">▲</button>
+      <button class="touch-button" data-key="ArrowLeft" aria-label="Gauche">◀</button>
+      <button class="touch-button" data-key="ArrowDown" aria-label="Bas">▼</button>
+      <button class="touch-button" data-key="ArrowRight" aria-label="Droite">▶</button>
+    </div>
+    <div class="actions">
+      <button class="touch-button" data-key="Enter" aria-label="Démarrer ou continuer">START</button>
+      <button class="touch-button" data-key="Space" aria-label="Tirer">TIR</button>
+      <button class="touch-button" data-key="KeyX" aria-label="Nova Pulse — capacité spéciale">NOVA PULSE</button>
+    </div>
   </div>
   <script type="module" src="./src/main.js"></script>
 </body>

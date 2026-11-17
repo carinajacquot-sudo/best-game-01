@@ -1,13 +1,12 @@
-// levels.js: Level definitions, wave spawning logic, and lantern progress tracking.
-
+// levels.js: original ten-district campaign with escalating waves and a sector boss each.
 export class LevelManager {
   constructor() {
     this.currentLevel = 1;
-    this.maxLevels = 3;
+    this.maxLevels = 10;
     this.waveTimer = 0;
     this.enemiesSpawnedInLevel = 0;
     this.lanternsLit = 0;
-    this.targetLanterns = 3; // 3 per level -> 9 total
+    this.targetLanterns = 10;
     this.levelCompleted = false;
     this.bossDefeated = false;
   }
@@ -21,38 +20,41 @@ export class LevelManager {
     this.bossDefeated = false;
   }
 
+  spawnEncounter(enemyManager, rng) {
+    const index = this.enemiesSpawnedInLevel - 1;
+    const y = rng.range(105, 475);
+    if (index === 8) {
+      enemyManager.spawnBoss(this.currentLevel);
+      return;
+    }
+    const roll = rng.next();
+    if (this.currentLevel === 1) {
+      if (index === 5 || index === 6) enemyManager.spawnPrism(1320, y);
+      else enemyManager.spawnDrifter(1320, y);
+    } else if (this.currentLevel >= 4 && roll < 0.26) {
+      enemyManager.spawnLancer(1320, y);
+    } else if (index % 4 === 3 || roll < 0.16) {
+      enemyManager.spawnPrism(1320, y);
+    } else if (roll < 0.42) {
+      enemyManager.spawnWeaver(1320, y);
+    } else if (roll < 0.68) {
+      enemyManager.spawnTank(1320, y);
+    } else {
+      enemyManager.spawnDrifter(1320, y);
+    }
+  }
+
   update(dt, enemyManager, rng) {
     if (this.levelCompleted) return;
-
     this.waveTimer += dt;
-    if (this.waveTimer > 2.5 && this.enemiesSpawnedInLevel < 12) {
+    const pace = Math.max(1.15, 2.1 - (this.currentLevel - 1) * 0.08);
+    if (this.waveTimer >= pace && this.enemiesSpawnedInLevel < 9) {
       this.waveTimer = 0;
       this.enemiesSpawnedInLevel++;
-
-      const y = rng.range(100, 480);
-      if (this.currentLevel === 1) {
-        enemyManager.spawnDrifter(1320, y);
-      } else if (this.currentLevel === 2) {
-        if (rng.next() < 0.6) {
-          enemyManager.spawnWeaver(1320, y);
-        } else {
-          enemyManager.spawnTank(1320, y);
-        }
-      } else if (this.currentLevel === 3) {
-        if (!enemyManager.boss && this.enemiesSpawnedInLevel === 1) {
-          enemyManager.spawnBoss();
-        } else {
-          enemyManager.spawnDrifter(1320, y);
-        }
-      }
+      this.spawnEncounter(enemyManager, rng);
     }
-
-    // Check if level conditions are met
-    if (this.currentLevel < 3 && this.enemiesSpawnedInLevel >= 12 && enemyManager.enemies.length === 0) {
-      this.lanternsLit += 3;
-      this.levelCompleted = true;
-    } else if (this.currentLevel === 3 && this.bossDefeated) {
-      this.lanternsLit = 9;
+    if (this.bossDefeated && enemyManager.enemies.length === 0) {
+      this.lanternsLit = Math.min(this.targetLanterns, this.currentLevel);
       this.levelCompleted = true;
     }
   }
@@ -63,8 +65,9 @@ export class LevelManager {
       this.waveTimer = 0;
       this.enemiesSpawnedInLevel = 0;
       this.levelCompleted = false;
+      this.bossDefeated = false;
       return true;
     }
-    return false; // Victory
+    return false;
   }
 }

@@ -32,11 +32,36 @@ export class Background {
     }
 
     this.beaconPhase = 0;
+    this.sector = 1;
 
     this.cachedCtx = null;
     this.bgGrad = null;
     this.sunGrad = null;
     this.horizonHazeGrad = null;
+
+    // Painted nebula layer (v6): static, frame-independent asset. Keeps the
+    // procedural sector themes — drawn additively at modest alpha, silently
+    // skipped on load failure so the procedural sky always remains.
+    this.nebula = new Image();
+    this.nebula.src = 'assets/v6/nebula-sky.jpg';
+    // Painted far skyline (v6): distant silhouette city, screen-blended at the
+    // horizon between nebula and the procedural near skyline — layered 2.5D depth.
+    this.farCity = new Image();
+    this.farCity.src = 'assets/v6/far-city.jpg';
+    this.assetsReady = new Promise((resolve) => {
+      let settled = 0;
+      const done = () => { settled += 1; if (settled >= 2) resolve(true); };
+      this.nebula.onload = done; this.nebula.onerror = done;
+      this.farCity.onload = done; this.farCity.onerror = done;
+    });
+  }
+
+  setSector(sector) {
+    this.sector = Math.max(1, Math.min(10, sector));
+    this.bgGrad = null;
+    this.sunGrad = null;
+    this.horizonHazeGrad = null;
+    this.cachedCtx = null;
   }
 
   generateSkyline(count, minH, maxH, speedFactor) {
@@ -69,29 +94,60 @@ export class Background {
   }
 
   draw(ctx) {
+    if (!this.sectorPalettes) this.sectorPalettes = [
+      { sky: ['#05020a', '#150a2b', '#2b0c3a'], sun: ['#ffea00', '#ff4400', '#ff007f'], haze: 'rgba(255,0,127,.34)', city: ['#100620', '#1e0b36', '#2a0d4a'], grid: 'rgba(0,240,255,.25)' },
+      { sky: ['#03111b', '#092b43', '#174661'], sun: ['#c6fff2', '#36c9c2', '#2680a2'], haze: 'rgba(54,201,194,.28)', city: ['#071925', '#0b2b3d', '#124055'], grid: 'rgba(93,255,229,.24)' },
+      { sky: ['#11051a', '#351044', '#5a194d'], sun: ['#fff0b0', '#ff8a5b', '#ec3f7a'], haze: 'rgba(255,68,126,.28)', city: ['#1b0b25', '#34113e', '#4b1742'], grid: 'rgba(255,146,190,.23)' },
+      { sky: ['#07101f', '#15254b', '#253666'], sun: ['#f6e9ff', '#a38bff', '#526dff'], haze: 'rgba(97,118,255,.3)', city: ['#101a30', '#1b2c50', '#283b62'], grid: 'rgba(153,187,255,.24)' },
+      { sky: ['#160704', '#3a1609', '#642410'], sun: ['#fff0a0', '#ff8a00', '#fa3a28'], haze: 'rgba(255,91,34,.27)', city: ['#241006', '#421a0a', '#60230d'], grid: 'rgba(255,190,87,.24)' },
+      { sky: ['#030b13', '#0b2631', '#134743'], sun: ['#e4fff0', '#70e6a6', '#29a985'], haze: 'rgba(61,236,165,.25)', city: ['#071b1b', '#0b302b', '#145044'], grid: 'rgba(103,255,183,.24)' },
+      { sky: ['#10041a', '#30103e', '#4c1557'], sun: ['#fff0d0', '#ff72c5', '#a832c5'], haze: 'rgba(228,54,210,.28)', city: ['#1d0928', '#35113f', '#4a1654'], grid: 'rgba(255,128,231,.23)' },
+      { sky: ['#060a17', '#121d3c', '#23294b'], sun: ['#d8ffff', '#60d6eb', '#327aa3'], haze: 'rgba(53,194,225,.24)', city: ['#0b1124', '#162143', '#242c50'], grid: 'rgba(84,222,255,.24)' },
+      { sky: ['#080512', '#1d1038', '#361547'], sun: ['#f5d6ff', '#bb65ff', '#5e2dcc'], haze: 'rgba(148,76,255,.3)', city: ['#10091e', '#21103a', '#33164b'], grid: 'rgba(187,130,255,.23)' },
+      { sky: ['#07090d', '#1a1b28', '#30313d'], sun: ['#fff4cf', '#ffc95e', '#fa695e'], haze: 'rgba(255,174,91,.3)', city: ['#10121a', '#20212b', '#30303b'], grid: 'rgba(255,224,154,.25)' },
+    ];
+    const theme = this.sectorPalettes[this.sector - 1];
     if (!this.bgGrad || this.cachedCtx !== ctx) {
       this.cachedCtx = ctx;
       this.bgGrad = ctx.createLinearGradient(0, 0, 0, 720);
-      this.bgGrad.addColorStop(0, '#05020a');
-      this.bgGrad.addColorStop(0.6, '#150a2b');
-      this.bgGrad.addColorStop(1, '#2b0c3a');
+      this.bgGrad.addColorStop(0, theme.sky[0]);
+      this.bgGrad.addColorStop(0.6, theme.sky[1]);
+      this.bgGrad.addColorStop(1, theme.sky[2]);
 
       const sunX = 640;
       const sunY = 320;
       const sunRadius = 160;
       this.sunGrad = ctx.createRadialGradient(sunX, sunY - 40, 10, sunX, sunY, sunRadius);
-      this.sunGrad.addColorStop(0, '#ffea00');
-      this.sunGrad.addColorStop(0.5, '#ff4400');
-      this.sunGrad.addColorStop(1, '#ff007f');
+      this.sunGrad.addColorStop(0, theme.sun[0]);
+      this.sunGrad.addColorStop(0.5, theme.sun[1]);
+      this.sunGrad.addColorStop(1, theme.sun[2]);
 
       this.horizonHazeGrad = ctx.createRadialGradient(640, 560, 0, 640, 560, 520);
-      this.horizonHazeGrad.addColorStop(0, 'rgba(255, 0, 127, 0.34)');
-      this.horizonHazeGrad.addColorStop(1, 'rgba(255, 0, 127, 0)');
+      this.horizonHazeGrad.addColorStop(0, theme.haze);
+      this.horizonHazeGrad.addColorStop(1, 'rgba(0,0,0,0)');
     }
 
     // Deep gradient background
     ctx.fillStyle = this.bgGrad;
     ctx.fillRect(0, 0, 1280, 720);
+
+    // Painted nebula (v6) — additive glow that enriches, never re-tints, the sector palette
+    if (this.nebula && this.nebula.complete && this.nebula.naturalWidth) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(this.nebula, 0, 0, 1280, 720);
+      ctx.restore();
+    }
+
+    // Painted far skyline (v6) — distant silhouette band, true 2.5D parallax layer
+    if (this.farCity && this.farCity.complete && this.farCity.naturalWidth) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(this.farCity, 0, -118, 1280, 720);
+      ctx.restore();
+    }
 
     // Stars
     ctx.fillStyle = '#ffffff';
@@ -151,12 +207,12 @@ export class Background {
     ctx.restore();
 
     // Parallax skyline layers
-    this.drawSkylineLayer(ctx, this.buildings1, '#100620');
-    this.drawSkylineLayer(ctx, this.buildings2, '#1e0b36');
-    this.drawSkylineLayer(ctx, this.buildings3, '#2a0d4a');
+    this.drawSkylineLayer(ctx, this.buildings1, theme.city[0]);
+    this.drawSkylineLayer(ctx, this.buildings2, theme.city[1]);
+    this.drawSkylineLayer(ctx, this.buildings3, theme.city[2]);
 
     // Perspective floor grid (cyberpunk horizon grid)
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
+    ctx.strokeStyle = theme.grid;
     ctx.lineWidth = 2;
     ctx.beginPath();
     const horizonY = 560;

@@ -10,9 +10,9 @@ export class HUD {
     this.keyArt = keyArt;
   }
 
-  draw(ctx, gameState, player, score, combo, levelManager, boss) {
+  draw(ctx, gameState, player, score, combo, levelManager, boss, pilot = null) {
     if (gameState === 'title') {
-      this.drawTitleScreen(ctx);
+      this.drawTitleScreen(ctx, pilot);
     } else if (gameState === 'howto') {
       this.drawHowToPlay(ctx);
     } else if (gameState === 'play') {
@@ -26,7 +26,7 @@ export class HUD {
     }
   }
 
-  drawTitleScreen(ctx) {
+  drawTitleScreen(ctx, pilot = null) {
     ctx.save();
     if (this.keyArt) {
       ctx.drawImage(this.keyArt, 0, 0, 1280, 720);
@@ -66,6 +66,18 @@ export class HUD {
       ctx.fillStyle = '#8be9fd';
       ctx.font = '15px Orbitron';
       ctx.fillText('T H E  L A S T  E M B E R  O F  A  D Y I N G  S T A R', 640, 346);
+
+      if (pilot && pilot.profile) {
+        ctx.shadowColor = pilot.profile.color;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = pilot.profile.color;
+        ctx.font = '700 17px Orbitron';
+        ctx.fillText(`PILOT CRAFT  ·  ${pilot.profile.name}`, 640, 432);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,.82)';
+        ctx.font = '12px Orbitron';
+        ctx.fillText(`${pilot.profile.role.toUpperCase()}  ·  ◀ / ▶ TO SELECT`, 640, 456);
+      }
 
       // 2px magenta divider y=566 (x 410-870)
       ctx.strokeStyle = '#ff007f';
@@ -118,6 +130,12 @@ export class HUD {
       ctx.font = '20px Orbitron';
       ctx.fillText('the last ember of a dying star', 640, 300);
 
+      if (pilot && pilot.profile) {
+        ctx.fillStyle = pilot.profile.color;
+        ctx.font = '15px Orbitron';
+        ctx.fillText(`PILOT CRAFT · ${pilot.profile.name}  [← / →]`, 640, 390);
+      }
+
       ctx.fillStyle = '#ffffff';
       ctx.font = '16px Orbitron';
       const blink = this.screenshotMode || Math.floor(Date.now() / 400) % 2 === 0;
@@ -149,17 +167,19 @@ export class HUD {
     const lines = [
       '• MOVE: Arrow keys or W/A/S/D',
       '• SHOOT: Space, J, or Left Mouse Click',
+      '• NOVA PULSE: Press X when the charge meter is full',
+      '• PILOT CRAFT: Select a ship with Left / Right at title',
       '• PAUSE: P key',
       '• MUTE AUDIO: M key',
-      '• GOAL: Relight all 9 district lanterns across 3 levels',
+      '• GOAL: Reclaim 10 districts and defeat each sector boss',
       '• COMBO: Consecutive kills grow multiplier up to x8',
       '• POWERUPS: Tanks drop Flare (triple shot), Aegis (shield), Magnet',
     ];
 
-    let y = 240;
+    let y = 212;
     for (const line of lines) {
       ctx.fillText(line, 240, y);
-      y += 50;
+      y += 44;
     }
 
     ctx.textAlign = 'center';
@@ -171,6 +191,25 @@ export class HUD {
 
   drawPlayHUD(ctx, player, score, combo, levelManager, boss) {
     ctx.save();
+
+    // Slim glass panels give the arcade readouts a stable, high-contrast home.
+    const panel = (x, y, w, h, accent) => {
+      ctx.save();
+      ctx.fillStyle = 'rgba(5, 8, 24, 0.72)';
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = 9;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 8);
+      ctx.fill();
+      ctx.globalAlpha = 0.7;
+      ctx.stroke();
+      ctx.restore();
+    };
+    panel(20, 12, 190, 42, 'rgba(0,240,255,.8)');
+    panel(470, 12, 340, 42, 'rgba(255,210,74,.8)');
+    panel(1010, 12, 250, 42, 'rgba(255,0,127,.8)');
 
     // 'EMBER' Orbitron 11px dim cyan at x=34, y=34
     ctx.font = '11px Orbitron';
@@ -223,13 +262,43 @@ export class HUD {
     ctx.shadowBlur = 10;
     ctx.fillText(`SCORE: ${score}   MULTIPLIER: x${combo}`, 640, 36);
 
+    // Nova Pulse meter sits below the life row and blooms when ready.
+    const pulse = Math.max(0, Math.min(1, (player.pulseCharge || 0) / 100));
+    ctx.textAlign = 'left';
+    ctx.font = '9px Orbitron';
+    ctx.fillStyle = pulse >= 1 ? '#ffe27a' : 'rgba(130,255,244,.75)';
+    ctx.shadowColor = pulse >= 1 ? '#ffe27a' : '#48fff0';
+    ctx.shadowBlur = pulse >= 1 ? 12 : 5;
+    ctx.fillText(pulse >= 1 ? 'NOVA READY  [X]' : 'NOVA PULSE', 34, 70);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0, 0, 0, .55)';
+    ctx.beginPath(); ctx.roundRect(34, 76, 156, 6, 3); ctx.fill();
+    if (pulse > 0) {
+      const meter = ctx.createLinearGradient(34, 0, 190, 0);
+      meter.addColorStop(0, '#48fff0'); meter.addColorStop(1, pulse >= 1 ? '#ffe27a' : '#6e9dff');
+      ctx.fillStyle = meter;
+      ctx.shadowColor = pulse >= 1 ? '#ffe27a' : '#48fff0';
+      ctx.shadowBlur = pulse >= 1 ? 12 : 6;
+      ctx.beginPath(); ctx.roundRect(34, 76, 156 * pulse, 6, 3); ctx.fill();
+    }
+
     // Level & Lanterns (Orbitron 15px)
     ctx.textAlign = 'right';
-    ctx.font = '15px Orbitron';
+    ctx.font = '13px Orbitron';
     ctx.fillStyle = '#ff007f';
     ctx.shadowColor = '#ff007f';
     ctx.shadowBlur = 10;
-    ctx.fillText(`LEVEL ${levelManager.currentLevel} | LANTERNS: ${levelManager.lanternsLit}/9`, 1240, 36);
+    ctx.fillText(`SECTOR ${levelManager.currentLevel}/10 · ${levelManager.lanternsLit}/10 LIT`, 1240, 36);
+
+    // Last-life warning: a subtle breathing warning, not a distracting full-screen flash.
+    if (player.lives === 1) {
+      const pulse = 0.12 + (Math.sin(Date.now() / 210) + 1) * 0.07;
+      ctx.fillStyle = `rgba(255, 20, 70, ${pulse})`;
+      ctx.fillRect(0, 0, 1280, 7);
+      ctx.fillRect(0, 713, 1280, 7);
+      ctx.fillRect(0, 0, 7, 720);
+      ctx.fillRect(1273, 0, 7, 720);
+    }
 
     // Boss Bar (only when boss truthy)
     if (boss) {
@@ -265,7 +334,7 @@ export class HUD {
       ctx.textAlign = 'center';
       ctx.shadowColor = '#ffffff';
       ctx.shadowBlur = 5;
-      ctx.fillText('THE HOLLOW CROWN', 640, 52);
+      ctx.fillText(`${boss.title || 'THE HOLLOW CROWN'}  ·  PHASE ${boss.phase}`, 640, 52);
 
       ctx.restore();
     }
@@ -341,12 +410,12 @@ export class HUD {
     ctx.textAlign = 'center';
     ctx.fillText('THE CITY REMEMBERS', 640, 252);
 
-    // ALL 9 LANTERNS RELIGHTED
+    // Ten original districts reclaimed.
     ctx.shadowColor = '#00f0ff';
     ctx.shadowBlur = 20;
     ctx.fillStyle = '#00f0ff';
     ctx.font = '16px Orbitron';
-    ctx.fillText('ALL 9 LANTERNS RELIGHTED', 640, 320);
+    ctx.fillText('ALL 10 DISTRICTS RECLAIMED', 640, 320);
 
     // FINAL SCORE dim
     ctx.shadowBlur = 5;
