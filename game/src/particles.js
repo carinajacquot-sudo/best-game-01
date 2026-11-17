@@ -7,16 +7,21 @@ export class ParticleManager {
   }
 
   spawn(x, y, vx, vy, color, size, life, shape = 'circle') {
-    if (this.particles.length >= 400) {
-      this.particles.shift();
-    }
-    this.particles.push({
+    this._push({
       x, y, vx, vy, color, size, life, maxLife: life, shape
     });
   }
 
+  // Global cap: every particle source (spawn or direct-push FX) respects the 400-particle ceiling.
+  _push(p) {
+    if (this.particles.length >= 400) {
+      this.particles.shift();
+    }
+    this.particles.push(p);
+  }
+
   shockwave(x, y, color = '#ffee00', maxRadius = 150, life = 0.8, lineWidth = 6) {
-    this.particles.push({
+    this._push({
       x, y, vx: 0, vy: 0, color, size: maxRadius, life, maxLife: life,
       shape: 'shockwave', lineWidth, radius0: 8
     });
@@ -33,7 +38,7 @@ export class ParticleManager {
   }
 
   groundPool(x, y, color = '#ff9a3c', life = 0.5, size = 70) {
-    this.particles.push({ x, y, vx: 0, vy: 0, color, size, life, maxLife: life, shape: 'pool' });
+    this._push({ x, y, vx: 0, vy: 0, color, size, life, maxLife: life, shape: 'pool' });
   }
 
   setFxSprites(sprites) {
@@ -43,7 +48,7 @@ export class ParticleManager {
   detonationFx(x, y, scale = 1) {
     const img = this.fxSprites && this.fxSprites.detonation;
     if (!img || !img.complete || !img.naturalWidth) return;
-    this.particles.push({
+    this._push({
       x, y, vx: 0, vy: 0, color: '#ffffff', size: 150 * scale, life: 0.62, maxLife: 0.62,
       shape: 'fx-detonation'
     });
@@ -52,7 +57,7 @@ export class ParticleManager {
   novaFx(x, y) {
     const img = this.fxSprites && this.fxSprites.nova;
     if (!img || !img.complete || !img.naturalWidth) return;
-    this.particles.push({
+    this._push({
       x, y, vx: 0, vy: 0, color: '#ffffff', size: 300, life: 0.55, maxLife: 0.55,
       shape: 'fx-nova'
     });
@@ -117,7 +122,7 @@ export class ParticleManager {
       if (p.shape === 'shockwave') {
         const t = 1 - alpha;
         const r = p.radius0 + (p.size - p.radius0) * t;
-        ctx.globalAlpha = alpha * 0.9;
+        ctx.globalAlpha = alpha * 1.08;
         ctx.strokeStyle = p.color;
         ctx.lineWidth = Math.max(1, p.lineWidth * (1 - t));
         ctx.shadowColor = p.color;
@@ -140,6 +145,17 @@ export class ParticleManager {
         ctx.translate(p.x, p.y);
         ctx.scale(1.8, 0.5);
         ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+
+        // White additive radial core at center (2.5D depth pass)
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = alpha * 0.5;
+        const core = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 0.35);
+        core.addColorStop(0, 'rgba(255,255,255,0.9)');
+        core.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = core;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.35, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         continue;
       }

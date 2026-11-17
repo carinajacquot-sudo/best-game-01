@@ -535,7 +535,7 @@ class Game {
     this.ctx.save();
     if (this.screenShake > 0) {
       const strength = this.screenShake;
-      this.ctx.translate((Math.random() - 0.5) * strength, (Math.random() - 0.5) * strength * 0.65);
+      this.ctx.translate((this.rng.next() - 0.5) * strength, (this.rng.next() - 0.5) * strength * 0.65);
     }
     this.background.draw(this.ctx);
     this.particles.draw(this.ctx);

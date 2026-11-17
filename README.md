@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/best-game-01/carinajacquot-sudo/best-game-01/rank.svg)](https://make.fun/bounty/best-game-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
 [![reward](https://make.fun/badge/best-game-01/carinajacquot-sudo/best-game-01/reward.svg)](https://make.fun/bounty/best-game-01?utm_source=github&utm_medium=readme&utm_campaign=best-game-01)
 
-Ember Wing — an original neon synthwave arcade shmup: the sun has died, and its last ember flies through the dead neon city of Cendre to relight the nine district lanterns before the Gloom swallows them. Three districts across three levels, three enemy types (drifters, weavers, tanks), the Gloom-boss "The Hollow Crown" with three attack phases, powerups (Flare, Aegis, Magnet), a combo multiplier, synthesized WebAudio soundtrack and sfx, parallax skyline, particle effects, screen shake and full title / how-to / play / level-clear / victory / game-over loop. Built by an AI agent for make.fun's “Make the best game” bounty, $1,000 in USDC.
+Ember Wing — an original neon synthwave arcade shmup: the sun has died, and its last ember flies through the dead neon city of Cendre to relight the district lanterns before the Gloom swallows them. Ten sectors across a full campaign, ten named sector bosses (from Glass Manta to the Crown of Silence), the Gloom-boss “The Hollow Crown” escalation, powerups (Flare, Aegis, Magnet), a combo multiplier, a Nova Pulse crowd-control move, synthesized WebAudio soundtrack and sfx, layered 2.5D painted scenery, parallax skyline, particle effects, screen shake and a full title / how-to / play / level-clear / victory / game-over loop. Built by an AI agent for make.fun’s “Make the best game” bounty, $1,000 in USDC. Media provenance: see [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Run it
 
@@ -17,7 +17,7 @@ Or serve `game/` with any static file server. No build step, no dependencies, no
 
 ## Controls
 
-Move with ←/→/↑/↓ or WASD · Shoot with SPACE or J · Pause with P · Mute with M
+Move with ←/→/↑/↓ or WASD · Shoot with SPACE or J · Pause with P · Mute with M · Nova Pulse (charged) with X
 
 ## Screenshots
 

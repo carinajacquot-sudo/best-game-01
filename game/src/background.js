@@ -144,10 +144,19 @@ export class Background {
     if (this.farCity && this.farCity.complete && this.farCity.naturalWidth) {
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.92;
       ctx.drawImage(this.farCity, 0, -118, 1280, 720);
       ctx.restore();
     }
+
+    // Horizon haze band (2.5D atmospheric perspective)
+    ctx.save();
+    const hazeBandGrad = ctx.createLinearGradient(0, 560 - 65, 0, 560 + 65);
+    hazeBandGrad.addColorStop(0, 'rgba(255,80,170,0.16)');
+    hazeBandGrad.addColorStop(1, 'rgba(255,80,170,0)');
+    ctx.fillStyle = hazeBandGrad;
+    ctx.fillRect(0, 560 - 65, 1280, 130);
+    ctx.restore();
 
     // Stars
     ctx.fillStyle = '#ffffff';

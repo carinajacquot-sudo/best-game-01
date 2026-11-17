@@ -154,6 +154,26 @@ export class EnemyManager {
     for (const e of this.enemies) {
       ctx.save();
       ctx.translate(e.x, e.y);
+
+      // Ground shadow for enemy (2.5D)
+      ctx.save();
+      const er = e.radius || 18;
+      const surfY = er * 0.9 + 6;
+      const rx = er;
+      const ry = er * 0.38;
+      ctx.fillStyle = 'rgba(6,10,24,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(0, surfY, rx * 1.2, ry * 1.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const shadowGrad = ctx.createLinearGradient(0, surfY - ry, 0, surfY + ry);
+      shadowGrad.addColorStop(0, 'rgba(6,10,24,0.55)');
+      shadowGrad.addColorStop(1, 'rgba(6,10,24,0)');
+      ctx.fillStyle = shadowGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, surfY, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       const color = e.type === 'drifter' ? '#ff4f9f' : e.type === 'weaver' ? '#33e8ff' : e.type === 'tank' ? '#ff9a62' : e.type === 'lancer' ? '#ffe27a' : '#b7ff72';
       ctx.fillStyle = color;
       ctx.strokeStyle = 'rgba(255,255,255,.9)';
@@ -163,15 +183,35 @@ export class EnemyManager {
       if (e.type === 'drifter') {
         ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-14, -13); ctx.lineTo(-7, 0); ctx.lineTo(-14, 13); ctx.closePath(); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#fff4cc'; ctx.fillRect(2, -2, 5, 4);
+        // Rim light (2.5D)
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(14, -2); ctx.lineTo(-10, -9); ctx.stroke();
       } else if (e.type === 'weaver') {
         ctx.rotate(e.time * 0.5);
         ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(18, 0); ctx.lineTo(0, 20); ctx.lineTo(-18, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#07121c'; ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+        // Rim light (2.5D)
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(-12, 0); ctx.stroke();
       } else if (e.type === 'tank') {
         ctx.beginPath(); ctx.roundRect(-23, -22, 46, 44, 9); ctx.fill(); ctx.stroke();
+        // Tank top edge light gradient strip (2.5D rim light)
+        const tankTopGrad = ctx.createLinearGradient(0, -22, 0, -10);
+        tankTopGrad.addColorStop(0, 'rgba(255,255,255,0.55)');
+        tankTopGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = tankTopGrad;
+        ctx.beginPath();
+        ctx.roundRect(-21, -20, 42, 10, 6);
+        ctx.fill();
         ctx.strokeStyle = 'rgba(40,12,20,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke();
       } else if (e.type === 'lancer') {
         ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(-12, -10); ctx.lineTo(-4, 0); ctx.lineTo(-12, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+        // Rim light (2.5D)
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(16, -2); ctx.lineTo(-8, -7); ctx.stroke();
         ctx.strokeStyle = e.lock > 0 ? '#ffffff' : 'rgba(255,226,122,.5)'; ctx.lineWidth = e.lock > 0 ? 3 : 1;
         ctx.beginPath(); ctx.moveTo(-14, -7); ctx.lineTo(-27, 0); ctx.lineTo(-14, 7); ctx.stroke();
       } else {
@@ -180,6 +220,10 @@ export class EnemyManager {
           ctx.rotate(Math.PI / 3); ctx.beginPath(); ctx.ellipse(0, -16, 6, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         }
         ctx.fillStyle = '#f4ffd1'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+        // Rim light (2.5D)
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(0, 0, 11, -Math.PI * 0.8, -Math.PI * 0.2); ctx.stroke();
       }
       if (e.maxHp > 1) {
         ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(-20, 30, 40, 4);
@@ -190,6 +234,27 @@ export class EnemyManager {
 
     const b = this.boss;
     if (!b) return;
+
+    // Boss ground shadow (2.5D)
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    const br = b.radius || 56;
+    const bSurfY = br * 0.9 + 10;
+    const brx = br;
+    const bry = br * 0.38;
+    ctx.fillStyle = 'rgba(6,10,24,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(0, bSurfY, brx * 1.25, bry * 1.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const bShadowGrad = ctx.createLinearGradient(0, bSurfY - bry, 0, bSurfY + bry);
+    bShadowGrad.addColorStop(0, 'rgba(6,10,24,0.55)');
+    bShadowGrad.addColorStop(1, 'rgba(6,10,24,0)');
+    ctx.fillStyle = bShadowGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, bSurfY, brx, bry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     // Painted finale (v6): sector 10 "Crown of Silence" — additive sprite, rings/eyes vector skipped
     if (b.style === 0 && this.glassManta && this.glassManta.complete && this.glassManta.naturalWidth) {
       ctx.save();

@@ -68,6 +68,25 @@ export class Player {
     if (this.invulnTimer > 0 && Math.floor(Date.now() / 80) % 2 === 0) return;
     ctx.save();
     ctx.translate(this.x, this.y);
+
+    // Ground shadow (2.5D): soft elliptical shadow cast on the playfield beneath the ship
+    ctx.save();
+    const surfY = this.radius * 0.9 + 6;
+    const rx = this.radius;
+    const ry = this.radius * 0.38;
+    ctx.fillStyle = 'rgba(6,10,24,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(0, surfY, rx * 1.25, ry * 1.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const shadowGrad = ctx.createLinearGradient(0, surfY - ry, 0, surfY + ry);
+    shadowGrad.addColorStop(0, 'rgba(6,10,24,0.55)');
+    shadowGrad.addColorStop(1, 'rgba(6,10,24,0)');
+    ctx.fillStyle = shadowGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, surfY, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     const color = this.profile.color;
     const charge = Math.min(1, this.pulseCharge / 100);
     ctx.shadowColor = color;
@@ -215,7 +234,7 @@ export class Player {
       ctx.lineWidth = 2 + charge * 2;
       ctx.shadowColor = charge >= 1 ? '#ffe27a' : '#48fff0';
       ctx.shadowBlur = 10 + charge * 16;
-      ctx.beginPath(); ctx.arc(0, 0, 31 + Math.sin(Date.now() / 180) * 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * charge); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 31 + Math.sin(this.enginePhase * 0.9) * 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * charge); ctx.stroke();
     }
     if (this.aegisShield) {
       ctx.strokeStyle = '#ffcc73'; ctx.lineWidth = 3; ctx.shadowColor = '#ff9b71'; ctx.shadowBlur = 22;
