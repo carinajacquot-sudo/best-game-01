@@ -28,11 +28,21 @@ export class LevelManager {
       return;
     }
     const roll = rng.next();
-    if (this.currentLevel === 1) {
+    // v7.1: the wave table is built around the modelled aliens. Every district
+    // introduces one more species, so the first waves stay readable and the late
+    // sectors mix stalkers (lungers) and mines (area denial) into the swarm.
+    const lvl = this.currentLevel;
+    if (lvl === 1) {
       if (index === 5 || index === 6) enemyManager.spawnPrism(1320, y);
       else enemyManager.spawnDrifter(1320, y);
-    } else if (this.currentLevel >= 4 && roll < 0.26) {
+    } else if (lvl === 2 && roll < 0.3) {
+      enemyManager.spawnWeaver(1320, y);
+    } else if (lvl >= 6 && roll < 0.14) {
+      enemyManager.spawnMine(1290, y);
+    } else if (lvl >= 4 && roll < 0.26) {
       enemyManager.spawnLancer(1320, y);
+    } else if (lvl >= 5 && roll > 0.86) {
+      enemyManager.spawnStalker(1300, y);
     } else if (index % 4 === 3 || roll < 0.16) {
       enemyManager.spawnPrism(1320, y);
     } else if (roll < 0.42) {
@@ -42,6 +52,8 @@ export class LevelManager {
     } else {
       enemyManager.spawnDrifter(1320, y);
     }
+    // one extra lunging stalker opens district 5 so the new hazard is announced
+    if (lvl === 5 && index === 0) enemyManager.spawnStalker(1300, y);
   }
 
   update(dt, enemyManager, rng) {

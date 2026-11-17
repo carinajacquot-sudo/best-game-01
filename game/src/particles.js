@@ -1,5 +1,44 @@
 // particles.js: Particle system manager for ember trails, explosions, and hit sparks.
 
+const POOL_CACHE = new Map();
+let CORE_SPRITE = null;
+
+/** One soft radial puddle per colour and radius bucket. */
+function poolSprite(color, R) {
+  const key = `${color}:${R}`;
+  let c = POOL_CACHE.get(key);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = R * 2;
+  c.height = R * 2;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(R, R, 2, R, R, R);
+  g.addColorStop(0, color);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, R * 2, R * 2);
+  POOL_CACHE.set(key, c);
+  if (POOL_CACHE.size > 48) POOL_CACHE.delete(POOL_CACHE.keys().next().value);
+  return c;
+}
+
+/** Shared white hot core used by every pool. */
+function coreSprite() {
+  if (CORE_SPRITE) return CORE_SPRITE;
+  const R = 16;
+  const c = document.createElement('canvas');
+  c.width = R * 2;
+  c.height = R * 2;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(R, R, 0, R, R, R);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, R * 2, R * 2);
+  CORE_SPRITE = c;
+  return CORE_SPRITE;
+}
+
 export class ParticleManager {
   constructor(rng = null) {
     this.rng = rng;
@@ -136,6 +175,12 @@ export class ParticleManager {
     // PERFORMANCE (v7.1): shadowBlur per particle was the single biggest cost
     // during explosions. Neon glows are now produced by cheap additive strokes.
     ctx.shadowBlur = 0;
+    // CROWD MODE: once a blast throws more than ~150 embers, one path+fill per
+    // particle becomes the frame bottleneck. The plain dots are then bucketed by
+    // (colour, quantised alpha) and flushed as grouped fillRects, so the number
+    // of canvas state changes follows the palette instead of the particle count.
+    const crowd = this.particles.length > 150;
+    let buckets = null;
     for (const p of this.particles) {
       const alpha = Math.max(0, p.life / p.maxLife);
       ctx.globalAlpha = alpha;
@@ -199,28 +244,20 @@ export class ParticleManager {
         continue;
       }
       if (p.shape === 'pool') {
-        ctx.globalAlpha = alpha * 0.5;
-        // The pool gradient is centred on the particle, so it is rebuilt only
-        // when the particle actually moves enough to matter.
-        const pool = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, p.size);
-        pool.addColorStop(0, p.color);
-        pool.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = pool;
+        // PERFORMANCE: a pool used to allocate two radial gradients per frame.
+        // The puddle and its hot core are pre-rendered once per colour+size
+        // bucket, so a pool is now two blits.
         ctx.save();
+        ctx.globalAlpha = alpha * 0.5;
         ctx.translate(p.x, p.y);
         ctx.scale(1.8, 0.5);
-        ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-
-        // White additive radial core at center (2.5D depth pass)
-        ctx.save();
+        const R = Math.max(4, Math.round(p.size));
+        const puddle = poolSprite(p.color, R);
+        ctx.drawImage(puddle, -R, -R, R * 2, R * 2);
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = alpha * 0.5;
-        const core = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 0.35);
-        core.addColorStop(0, 'rgba(255,255,255,0.9)');
-        core.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = core;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.35, 0, Math.PI * 2); ctx.fill();
+        const cr = Math.max(3, Math.round(R * 0.35));
+        ctx.drawImage(coreSprite(), -cr, -cr, cr * 2, cr * 2);
         ctx.restore();
         continue;
       }
@@ -232,10 +269,30 @@ export class ParticleManager {
       }
       if (p.shape === 'spark') {
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      } else if (crowd) {
+        const lvl = alpha < 0.25 ? 0 : alpha < 0.5 ? 1 : alpha < 0.75 ? 2 : 3;
+        const key = p.color + '|' + lvl;
+        let arr = (buckets || (buckets = new Map())).get(key);
+        if (!arr) { arr = []; buckets.set(key, arr); }
+        arr.push(p.x, p.y, p.size, (lvl + 1) * 0.25);
       } else {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    if (buckets) {
+      // One fillStyle + one globalAlpha per bucket, then nothing but fillRects.
+      for (const [key, arr] of buckets) {
+        const bar = key.lastIndexOf('|');
+        const alpha = arr[3];
+        ctx.fillStyle = key.slice(0, bar);
+        ctx.globalAlpha = alpha;
+        for (let i = 0; i < arr.length; i += 4) {
+          const r = arr[i + 2];
+          ctx.fillRect(arr[i] - r, arr[i + 1] - r, r * 2, r * 2);
+        }
       }
     }
     ctx.restore();

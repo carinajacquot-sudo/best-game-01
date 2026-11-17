@@ -9,6 +9,8 @@ import { ParticleManager } from './particles.js';
 import { BulletManager } from './bullets.js';
 import { Player, SHIPS } from './player.js';
 import { EnemyManager } from './enemies.js';
+import { MeteorShower } from './meteors.js';
+import { loadSprites } from './assets.js';
 import { PowerupManager } from './powerups.js';
 import { LevelManager } from './levels.js';
 import { HUD } from './hud.js';
@@ -75,6 +77,11 @@ class Game {
     this.powerups = new PowerupManager();
     this.levels = new LevelManager();
     this.hud = new HUD();
+
+    // Meteor shower hazard; the boss AI uses it for phase-3 bombardments.
+    this.meteors = new MeteorShower(this.rng, this.particles);
+    this.enemies.meteors = this.meteors;
+    this.GROUND_Y = 640;
 
     this.keyArt = null;
     this.popups = [];
@@ -173,12 +180,20 @@ class Game {
       this.background = new Background(this.rng);
       this.enemies = new EnemyManager(this.rng);
       this.particles = new ParticleManager(this.rng);
+      // The shower shares the re-seeded rng, otherwise its ember tails and
+      // rock jitter would differ between runs and break screenshot parity.
+      this.meteors = new MeteorShower(this.rng, this.particles);
+      this.enemies.meteors = this.meteors;
     }
 
     // Key art is generated once here (init-time, before the screenshot/harness branch);
     // prepareScreenshot reuses this.keyArt instead of regenerating it.
     // NOTE (P2): keyArtCanvas() uses its own fixed seed (1337) — deliberately identical
     // across query seeds; ?seed= drives only background/enemies/particles.
+    // Modelled-alien sprite sheets are fetched now so they are warm before
+    // the first play frame; the draw paths fall back to vectors meanwhile.
+    void loadSprites();
+
     this.keyArt = keyArtCanvas();
     this.hud.setKeyArt(this.keyArt);
 
@@ -201,6 +216,7 @@ class Game {
   async prepareScreenshot(shot) {
     try {
       await loadScreenshotFonts();
+      await loadSprites();
       // Reuse the canvas built in init(); only rebuild if it is somehow missing.
       if (!this.keyArt) {
         this.keyArt = keyArtCanvas();
@@ -249,6 +265,14 @@ class Game {
       this.enemies.spawnDrifter(680, 450);
       this.enemies.spawnPrism(820, 320);
       this.enemies.spawnLancer(1150, 200);
+      this.enemies.spawnStalker(980, 560);
+      this.enemies.spawnMine(620, 520);
+
+      // v7.1: the meteor shower is part of the district fight, so the staged
+      // frame shows two incoming rocks and one ground burst.
+      this.meteors.spawnRock(1120, 120, { vx: -3.6, vy: 2.4, size: 52, hp: 2, maxHp: 2 });
+      this.meteors.spawnRock(760, 60, { vx: -3.0, vy: 2.8, size: 38, hp: 1, maxHp: 1 });
+      this.meteors.shockwaves.push({ x: 520, y: this.GROUND_Y, r: 70, maxR: 190, t: 0.18, dur: 0.52, hit: true });
 
       // Fire several player bullets in flight including triple-shot flare shots
       this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
@@ -318,8 +342,13 @@ class Game {
     this.powerups = new PowerupManager();
     this.bullets = new BulletManager();
     this.particles = new ParticleManager(this.rng);
+    this.meteors.particles = this.particles;
+    this.enemies.meteors = this.meteors;
+    this.enemies.onExplosion = (e, r) => this.particles.explosion(e.x, e.y, e.color || '#ffc45a', 22);
+    this.meteors.reset();
     this.popups = [];
     this.levels.reset();
+    this.applySectorHazards();
     this.cinematic = null;
     this.timeScale = 1.0;
     this.victoryT = 0;
@@ -449,6 +478,14 @@ class Game {
               this.enemies.enemies.splice(ei, 1);
             }
           }
+          for (let mi = this.meteors.rocks.length - 1; mi >= 0; mi--) {
+            const m = this.meteors.rocks[mi];
+            this.meteors.rocks.splice(mi, 1);
+            this.particles.explosion(m.x, m.y, '#ffb457', 18);
+            const points = m.scoreValue * this.combo;
+            this.score += points;
+            this.popups.push({ x: m.x, y: m.y, text: '+' + points, t: 0 });
+          }
           if (this.enemies.boss) {
             this.enemies.boss.hp = Math.max(0, this.enemies.boss.hp - 4);
             this.particles.explosion(this.enemies.boss.x, this.enemies.boss.y, '#ffe27a', 28);
@@ -487,6 +524,8 @@ class Game {
 
         this.bullets.update(simDt);
         this.enemies.update(simDt, this.bullets, this.player);
+        this.meteors.update(simDt, { w: CONFIG.width, h: CONFIG.height, groundY: this.GROUND_Y });
+        this.resolveMeteorDamage();
         this.audio.setBossMode(!!this.enemies.boss);
         // Boss phase transitions (62% / 28% HP) get a terrifying tritone sting.
         if (this.enemies.boss) {
@@ -509,6 +548,7 @@ class Game {
           b.attackTimer = -1.2; // grace period once control resumes; frozen world freezes this too
           this.lastRingIndex = 0;
           this.audio.setTheme('boss');
+          this.applySectorHazards(); // ambient shower yields to the boss' own meteorRain
           if (this.audio.playBossEntrance) this.audio.playBossEntrance(b.title);
         }
 
@@ -582,6 +622,37 @@ class Game {
           }
         }
 
+        // Collisions: Player bullets vs meteors — the rocks are shootable.
+        for (let bi = this.bullets.bullets.length - 1; bi >= 0; bi--) {
+          const b = this.bullets.bullets[bi];
+          if (!b.isPlayer) continue;
+          for (let mi = this.meteors.rocks.length - 1; mi >= 0; mi--) {
+            const m = this.meteors.rocks[mi];
+            if (!circleCollide(b, m)) continue;
+            this.bullets.bullets.splice(bi, 1);
+            this.particles.spawn(b.x, b.y, (this.rng.next() - 0.5) * 3, (this.rng.next() - 0.5) * 3, '#ffb457', 5, 0.28);
+            if (this.meteors.blast(m)) {
+              this.audio.playBoom();
+              const points = m.scoreValue * this.combo;
+              this.score += points;
+              this.popups.push({ x: m.x, y: m.y, text: '+' + points, t: 0 });
+              this.combo = Math.min(8, this.combo + 1);
+              this.comboTimer = 4.0;
+            }
+            break;
+          }
+        }
+
+        // Collisions: meteors vs the player (a rock body is lethal on contact)
+        for (let mi = this.meteors.rocks.length - 1; mi >= 0; mi--) {
+          const m = this.meteors.rocks[mi];
+          if (!circleCollide(m, this.player)) continue;
+          this.meteors.rocks.splice(mi, 1);
+          this.meteors.impact(m, { w: CONFIG.width, h: CONFIG.height, groundY: this.GROUND_Y });
+          this.screenShake = Math.max(this.screenShake, 10);
+          this.playerHitByHazard();
+        }
+
         // Collisions: Enemy bullets vs player
         for (let bi = this.bullets.bullets.length - 1; bi >= 0; bi--) {
           const b = this.bullets.bullets[bi];
@@ -632,6 +703,7 @@ class Game {
       if (this.input.wasPressed('Enter')) {
         this.audio.playUI();
         this.levels.nextLevel();
+        this.applySectorHazards();
         this.audio.setSector(this.levels.currentLevel);
         this.audio.setTheme('play');
         this.background.setSector(this.levels.currentLevel);
@@ -645,6 +717,58 @@ class Game {
         this.audio.setTheme('play');
         this.audio.startMusic();
       }
+    }
+  }
+
+  /**
+   * Ambient meteor intensity for the current district. Late sectors get a real
+   * bombardment; while a boss owns the screen the ambient shower stops so the
+   * only falling rock is the boss' own meteorRain technique.
+   */
+  applySectorHazards() {
+    if (!this.meteors) return;
+    if (this.enemies && this.enemies.boss) { this.meteors.end(); return; }
+    const lvl = this.levels ? this.levels.currentLevel : 1;
+    if (lvl <= 1) { this.meteors.end(); return; }
+    const intensity = Math.min(3, 1 + Math.floor((lvl - 2) / 3));
+    const interval = Math.max(0.85, 2.2 - (lvl - 2) * 0.14);
+    this.meteors.begin(intensity, interval);
+  }
+
+  /** Ground bursts are an environmental hazard: they hurt the aliens too. */
+  resolveMeteorDamage() {
+    for (const s of this.meteors.shockwaves) {
+      if (s.hit || s.t < 0.06) continue;
+      s.hit = true;
+      const reach = s.maxR * 0.78;
+      for (let ei = this.enemies.enemies.length - 1; ei >= 0; ei--) {
+        const e = this.enemies.enemies[ei];
+        if (Math.abs(e.x - s.x) > reach || Math.abs(e.y - s.y) > reach) continue;
+        e.hp -= 2;
+        e.hitFlash = 1;
+        if (e.hp <= 0) {
+          this.particles.explosion(e.x, e.y, '#ffb457', 22);
+          const points = Math.floor(e.scoreValue * 0.5 * this.combo);
+          this.score += points;
+          this.popups.push({ x: e.x, y: e.y, text: '+' + points, t: 0 });
+          this.enemies.enemies.splice(ei, 1);
+        }
+      }
+    }
+  }
+
+  /** Shared damage path for hazards (meteors, shockwaves). */
+  playerHitByHazard() {
+    this.audio.playHit();
+    const lost = this.player.hit();
+    if (!lost) return;
+    this.screenFlash = Math.max(this.screenFlash, 0.22);
+    this.combo = 1;
+    this.particles.explosion(this.player.x, this.player.y, '#00f0ff', 25);
+    if (this.player.lives <= 0) {
+      this.audio.setTheme('gameover');
+      this.audio.playGameOverSting();
+      this.state = 'gameover';
     }
   }
 
@@ -709,6 +833,7 @@ class Game {
     this.powerups.draw(sctx);
     this.bullets.draw(sctx);
     this.enemies.draw(sctx);
+    this.meteors.draw(sctx);
     if (this.state === 'play' || this.state === 'levelclear') {
       this.player.draw(sctx);
     }
