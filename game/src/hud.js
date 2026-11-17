@@ -1,8 +1,13 @@
 // hud.js: Heads-up display (HUD) and screen overlays (Title, How to Play, Level Clear, Game Over, Victory).
 
 export class HUD {
-  constructor() {
-    this.cover = null;
+  constructor(keyArt = null) {
+    this.keyArt = keyArt;
+    this.screenshotMode = false;
+  }
+
+  setKeyArt(keyArt) {
+    this.keyArt = keyArt;
   }
 
   draw(ctx, gameState, player, score, combo, levelManager, boss) {
@@ -23,22 +28,8 @@ export class HUD {
 
   drawTitleScreen(ctx) {
     ctx.save();
-    if (!this.cover) {
-      this.cover = new Image();
-      this.cover.src = 'assets/ember-wing-cover.jpg';
-    }
-
-    if (this.cover.complete && this.cover.naturalWidth > 0) {
-      const cw = ctx.canvas.width;
-      const ch = ctx.canvas.height;
-      const iw = this.cover.naturalWidth;
-      const ih = this.cover.naturalHeight;
-      const scale = Math.max(cw / iw, ch / ih);
-      const nw = iw * scale;
-      const nh = ih * scale;
-      const nx = (cw - nw) / 2;
-      const ny = (ch - nh) / 2;
-      ctx.drawImage(this.cover, nx, ny, nw, nh);
+    if (this.keyArt) {
+      ctx.drawImage(this.keyArt, 0, 0, 1280, 720);
 
       // Bottom-up gradient over lower 45%
       const botGrad = ctx.createLinearGradient(0, 720 * 0.55, 0, 720);
@@ -129,7 +120,7 @@ export class HUD {
 
       ctx.fillStyle = '#ffffff';
       ctx.font = '16px Orbitron';
-      const blink = Math.floor(Date.now() / 400) % 2 === 0;
+      const blink = this.screenshotMode || Math.floor(Date.now() / 400) % 2 === 0;
       if (blink) {
         ctx.fillText('PRESS [ENTER] TO START', 640, 460);
       }
@@ -326,28 +317,21 @@ export class HUD {
 
   drawVictory(ctx, score) {
     ctx.save();
-    if (!this.cover) {
-      this.cover = new Image();
-      this.cover.src = 'assets/ember-wing-cover.jpg';
-    }
-
-    if (this.cover.complete && this.cover.naturalWidth > 0) {
-      const cw = ctx.canvas.width;
-      const ch = ctx.canvas.height;
-      const iw = this.cover.naturalWidth;
-      const ih = this.cover.naturalHeight;
-      const scale = Math.max(cw / iw, ch / ih);
-      const nw = iw * scale;
-      const nh = ih * scale;
-      const nx = (cw - nw) / 2;
-      const ny = (ch - nh) / 2;
-      ctx.globalAlpha = 0.52;
-      ctx.drawImage(this.cover, nx, ny, nw, nh);
-      ctx.globalAlpha = 1.0;
-    }
-
-    ctx.fillStyle = 'rgba(5, 2, 10, 0.75)';
+    ctx.fillStyle = '#05020a';
     ctx.fillRect(0, 0, 1280, 720);
+
+    if (this.keyArt) {
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(this.keyArt, 0, 0, 1280, 720);
+      ctx.restore();
+
+      ctx.fillStyle = 'rgba(5,2,10,0.30)';
+      ctx.fillRect(0, 0, 1280, 720);
+    } else {
+      ctx.fillStyle = 'rgba(5, 2, 10, 0.55)';
+      ctx.fillRect(0, 0, 1280, 720);
+    }
 
     // THE CITY REMEMBERS
     ctx.shadowColor = '#ffd24a';

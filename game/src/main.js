@@ -12,6 +12,41 @@ import { EnemyManager } from './enemies.js';
 import { PowerupManager } from './powerups.js';
 import { LevelManager } from './levels.js';
 import { HUD } from './hud.js';
+import { keyArtCanvas } from './keyart.js';
+
+function readSeed(search) {
+  const params = new URLSearchParams(search);
+  const seedStr = params.get('seed');
+  if (seedStr === null || seedStr === '') return null;
+  const val = parseInt(seedStr, 10);
+  if (!Number.isFinite(val)) return null;
+  return val >>> 0;
+}
+
+async function loadScreenshotFonts() {
+  if (!document.fonts || !document.fonts.load) {
+    throw new Error('font loading API unavailable');
+  }
+  const pairs = [
+    ['112px Monoton', 'EMBER'],
+    ['54px Monoton', 'W I N G'],
+    ['50px Monoton', 'THE CITY REMEMBERS'],
+    ['15px Orbitron', 'ALL 9 LANTERNS RELIGHTED'],
+    ['700 34px Orbitron', '12850'],
+    ['600 19px Orbitron', '[ ENTER ] REIGNITE']
+  ];
+  await Promise.all(pairs.map(([font, text]) => document.fonts.load(font, text)));
+  await document.fonts.ready;
+  for (const [font, text] of pairs) {
+    if (!document.fonts.check(font, text)) {
+      throw new Error('Font check failed for ' + font + ' ("' + text + '")');
+    }
+  }
+}
+
+function nextFrame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
 
 class Game {
   constructor() {
@@ -19,27 +54,23 @@ class Game {
     this.ctx = this.canvas.getContext('2d');
     this.input = new InputHandler();
     this.audio = new AudioManager();
-    this.background = new Background();
-    this.particles = new ParticleManager();
+    this.rng = new RNG((Math.random() * 0xFFFFFFFF) >>> 0);
+    this.background = new Background(this.rng);
+    this.particles = new ParticleManager(this.rng);
     this.bullets = new BulletManager();
     this.player = new Player(200, 360);
-    this.enemies = new EnemyManager();
+    this.enemies = new EnemyManager(this.rng);
     this.powerups = new PowerupManager();
     this.levels = new LevelManager();
     this.hud = new HUD();
 
-    this.cover = new Image();
-    this.cover.src = 'assets/ember-wing-cover.jpg';
-    this.coverLoaded = false;
-    this.cover.onload = () => { this.coverLoaded = true; };
-
+    this.keyArt = null;
     this.popups = [];
 
     this.state = 'title'; // title, howto, play, levelclear, gameover, victory
     this.score = 0;
     this.combo = 1;
     this.comboTimer = 0;
-    this.rng = new RNG(12345);
     this.paused = false;
 
     this.lastTime = performance.now();
@@ -47,23 +78,51 @@ class Game {
   }
 
   init() {
-    // Check for screenshot harness parameters
+    const seedValue = readSeed(window.location.search);
+    if (seedValue !== null) {
+      this.rng = new RNG(seedValue);
+      this.background = new Background(this.rng);
+      this.enemies = new EnemyManager(this.rng);
+      this.particles = new ParticleManager(this.rng);
+    }
+
+    this.keyArt = keyArtCanvas();
+    this.hud.setKeyArt(this.keyArt);
+
     const params = new URLSearchParams(window.location.search);
     const shot = params.get('shot');
-    const seedParam = params.get('seed');
-    if (seedParam) {
-      this.rng = new RNG(parseInt(seedParam, 10) || 12345);
-    }
 
     if (shot) {
       this.isHarness = true;
-      Math.random = () => this.rng.next();
-      this.stageScreenshot(shot);
+      window.__shotReady = false;
+      window.__shotError = null;
+      this.hud.screenshotMode = true;
+      void this.prepareScreenshot(shot);
       return;
     }
 
     // Normal game start loop
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  async prepareScreenshot(shot) {
+    try {
+      await loadScreenshotFonts();
+      this.keyArt = keyArtCanvas();
+      this.hud.setKeyArt(this.keyArt);
+    } catch (e) {
+      window.__shotReady = false;
+      window.__shotError = String((e && e.message) || e);
+      console.error('[screenshot harness]', e);
+      return;
+    }
+    this.stageScreenshot(shot);
+    this.render();
+    await nextFrame();
+    this.render();
+    await nextFrame();
+    window.__shotError = null;
+    window.__shotReady = true;
   }
 
   stageScreenshot(shot) {
@@ -137,27 +196,6 @@ class Game {
       this.score = 12850;
       this.levels.lanternsLit = 9;
     }
-
-    // Paint twice and set window.__shotReady = true
-    this.render();
-    requestAnimationFrame(() => {
-      this.render();
-      window.__shotReady = true;
-    });
-    // Web fonts arrive asynchronously — actively load them, then repaint,
-    // so the first visible frame uses Monoton/Orbitron instead of fallbacks.
-    if (document.fonts && document.fonts.load) {
-      Promise.all([
-        document.fonts.load('112px Monoton', 'EMBER'),
-        document.fonts.load('54px Monoton', 'W I N G'),
-        document.fonts.load('50px Monoton', 'THE CITY REMEMBERS'),
-        document.fonts.load('700 21px Orbitron', 'SCORE'),
-        document.fonts.load('15px Orbitron', 'LEVEL'),
-      ]).then(() => {
-        this.render();
-        requestAnimationFrame(() => this.render());
-      }).catch(() => {});
-    }
   }
 
   resetGame() {
@@ -165,10 +203,10 @@ class Game {
     this.combo = 1;
     this.comboTimer = 0;
     this.player = new Player(200, 360);
-    this.enemies = new EnemyManager();
+    this.enemies = new EnemyManager(this.rng);
     this.powerups = new PowerupManager();
     this.bullets = new BulletManager();
-    this.particles = new ParticleManager();
+    this.particles = new ParticleManager(this.rng);
     this.popups = [];
     this.levels.reset();
   }
@@ -189,13 +227,13 @@ class Game {
 
     // Title / Victory / Gameover rising embers (35% chance per frame)
     if (this.state === 'title' || this.state === 'victory' || this.state === 'gameover') {
-      if (Math.random() < 0.35) {
-        const rx = Math.random() * 1280;
-        const rvx = (Math.random() - 0.5) * 0.5;
-        const rvy = - (0.6 + Math.random() * 0.9);
+      if (this.rng.next() < 0.35) {
+        const rx = this.rng.next() * 1280;
+        const rvx = (this.rng.next() - 0.5) * 0.5;
+        const rvy = - (0.6 + this.rng.next() * 0.9);
         const colors = ['#ff7700', '#ffb300', '#00f0ff'];
-        const rcolor = colors[Math.floor(Math.random() * colors.length)];
-        const rsize = 1.4 + Math.random() * 1.8;
+        const rcolor = colors[Math.floor(this.rng.next() * colors.length)];
+        const rsize = 1.4 + this.rng.next() * 1.8;
         this.particles.spawn(rx, 742, rvx, rvy, rcolor, rsize, 2.4);
       }
       this.particles.update(dt);
@@ -262,7 +300,7 @@ class Game {
           if (this.enemies.boss && circleCollide(b, this.enemies.boss)) {
             this.enemies.boss.hp--;
             this.bullets.bullets.splice(bi, 1);
-            this.particles.spawn(b.x, b.y, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, '#9d00ff', 6, 0.3);
+            this.particles.spawn(b.x, b.y, (this.rng.next() - 0.5) * 4, (this.rng.next() - 0.5) * 4, '#9d00ff', 6, 0.3);
             if (this.enemies.boss.hp <= 0) {
               this.levels.bossDefeated = true;
               this.audio.playBoom();
@@ -282,7 +320,7 @@ class Game {
             if (circleCollide(b, e)) {
               e.hp--;
               hitEnemy = true;
-              this.particles.spawn(b.x, b.y, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, '#ff007f', 5, 0.3);
+              this.particles.spawn(b.x, b.y, (this.rng.next() - 0.5) * 4, (this.rng.next() - 0.5) * 4, '#ff007f', 5, 0.3);
               if (e.hp <= 0) {
                 this.audio.playBoom();
                 this.particles.explosion(e.x, e.y, e.type === 'tank' ? '#ff7700' : '#ff007f', 30);

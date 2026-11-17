@@ -1,15 +1,18 @@
 // background.js: Procedural synthwave background with parallax skyline layers, sun disc, stars, and ambient particles.
 
 export class Background {
-  constructor() {
+  constructor(rng = null) {
+    this.rng = rng;
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
+
     this.stars = [];
     for (let i = 0; i < 80; i++) {
       this.stars.push({
-        x: Math.random() * 1280,
-        y: Math.random() * 720,
-        size: Math.random() * 2 + 1,
-        speed: Math.random() * 0.5 + 0.2,
-        brightness: Math.random(),
+        x: rand() * 1280,
+        y: rand() * 720,
+        size: rand() * 2 + 1,
+        speed: rand() * 0.5 + 0.2,
+        brightness: rand(),
       });
     }
 
@@ -17,28 +20,52 @@ export class Background {
     this.buildings2 = this.generateSkyline(18, 100, 220, 2.0);
     this.buildings3 = this.generateSkyline(26, 50, 140, 3.5);
 
+    this.rain = [];
+    for (let i = 0; i < 42; i++) {
+      this.rain.push({
+        x: rand() * 1280,
+        y: rand() * 380,
+        len: 14 + rand() * 26,
+        speed: 1.1 + rand() * 0.9,
+        alpha: 0.06 + rand() * 0.09,
+      });
+    }
+
+    this.beaconPhase = 0;
+
     this.cachedCtx = null;
     this.bgGrad = null;
     this.sunGrad = null;
+    this.horizonHazeGrad = null;
   }
 
   generateSkyline(count, minH, maxH, speedFactor) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
     const b = [];
     let x = 0;
     const w = 1280 / (count - 2);
     for (let i = 0; i < count; i++) {
-      const h = minH + Math.random() * (maxH - minH);
-      b.push({ x, w: w + Math.random() * 20, h, speed: speedFactor });
+      const h = minH + rand() * (maxH - minH);
+      b.push({ x, w: w + rand() * 20, h, speed: speedFactor });
       x += w;
     }
     return b;
   }
 
   update(dt, scrollSpeed = 1) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
     for (const star of this.stars) {
       star.x -= star.speed * scrollSpeed * dt * 60;
       if (star.x < 0) star.x = 1280;
     }
+    for (const streak of this.rain) {
+      streak.y += streak.speed * dt * 60;
+      if (streak.y > 500) {
+        streak.y = -streak.len;
+        streak.x = rand() * 1280;
+      }
+    }
+    this.beaconPhase += dt;
   }
 
   draw(ctx) {
@@ -56,6 +83,10 @@ export class Background {
       this.sunGrad.addColorStop(0, '#ffea00');
       this.sunGrad.addColorStop(0.5, '#ff4400');
       this.sunGrad.addColorStop(1, '#ff007f');
+
+      this.horizonHazeGrad = ctx.createRadialGradient(640, 560, 0, 640, 560, 520);
+      this.horizonHazeGrad.addColorStop(0, 'rgba(255, 0, 127, 0.34)');
+      this.horizonHazeGrad.addColorStop(1, 'rgba(255, 0, 127, 0)');
     }
 
     // Deep gradient background
@@ -96,6 +127,29 @@ export class Background {
     }
     ctx.restore();
 
+    // Horizon haze glow band
+    ctx.save();
+    ctx.fillStyle = this.horizonHazeGrad;
+    ctx.translate(640, 560);
+    ctx.scale(1, 0.32);
+    ctx.beginPath();
+    ctx.arc(0, 0, 520, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Neon rain streaks
+    ctx.save();
+    for (let i = 0; i < this.rain.length; i++) {
+      const streak = this.rain[i];
+      ctx.strokeStyle = i % 2 === 0 ? `rgba(0, 240, 255, ${streak.alpha})` : `rgba(255, 0, 127, ${streak.alpha})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(streak.x, streak.y);
+      ctx.lineTo(streak.x + 3, streak.y + streak.len);
+      ctx.stroke();
+    }
+    ctx.restore();
+
     // Parallax skyline layers
     this.drawSkylineLayer(ctx, this.buildings1, '#100620');
     this.drawSkylineLayer(ctx, this.buildings2, '#1e0b36');
@@ -125,18 +179,43 @@ export class Background {
       const b = buildings[bIndex];
       const y = 560 - b.h;
       ctx.fillRect(b.x, y, b.w, b.h);
-      // Windows glow
-      ctx.fillStyle = 'rgba(0, 240, 255, 0.3)';
+      // Windows glow — cyan by default, magenta/gold accents on a small fraction
       let row = 0;
       for (let wy = y + 15; wy < 540; wy += 30, row++) {
         let col = 0;
         for (let wx = b.x + 10; wx < b.x + b.w - 10; wx += 20, col++) {
-          if ((col + row * 3 + bIndex) % 4 === 0) {
+          const pick = (col + row * 3 + bIndex * 7) % 4;
+          if (pick === 0) {
+            ctx.fillStyle = 'rgba(0, 240, 255, 0.3)';
+            ctx.fillRect(wx, wy, 8, 12);
+          } else if (pick === 7 % 4 && (col * 31 + row * 17 + bIndex) % 11 === 0) {
+            ctx.fillStyle = 'rgba(255, 0, 127, 0.34)';
+            ctx.fillRect(wx, wy, 8, 12);
+          } else if ((col * 13 + row * 29 + bIndex * 5) % 23 === 0) {
+            ctx.fillStyle = 'rgba(255, 179, 0, 0.32)';
             ctx.fillRect(wx, wy, 8, 12);
           }
         }
       }
       ctx.fillStyle = color;
+
+      // Rooftop beacons on the mid skyline layer
+      if (buildings === this.buildings2) {
+        const bIdx = bIndex;
+        if (bIdx >= 2 && bIdx <= 14 && [2, 3, 5, 8, 11, 14].includes(bIdx)) {
+          const roofY = 560 - b.h;
+          const on = Math.sin(this.beaconPhase * 2 + bIdx) > 0;
+          ctx.save();
+          ctx.globalAlpha = on ? 0.9 : 0.1;
+          ctx.fillStyle = bIdx % 2 === 0 ? '#ff0055' : '#00f0ff';
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(b.x + b.w / 2, roofY - 4, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
     }
   }
 }

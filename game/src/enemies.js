@@ -3,16 +3,18 @@
 import { CONFIG } from './config.js';
 
 export class EnemyManager {
-  constructor() {
+  constructor(rng = null) {
+    this.rng = rng;
     this.enemies = [];
     this.boss = null;
   }
 
   spawnDrifter(x, y) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
     this.enemies.push({
       type: 'drifter',
       x, y,
-      vx: -3, vy: (Math.random() - 0.5) * 1.5,
+      vx: -3, vy: (rand() - 0.5) * 1.5,
       hp: 1, maxHp: 1,
       radius: 20,
       scoreValue: CONFIG.scoring.drifter
@@ -20,12 +22,13 @@ export class EnemyManager {
   }
 
   spawnWeaver(x, y) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
     this.enemies.push({
       type: 'weaver',
       x, y,
       vx: -3.5, vy: 0,
       startY: y,
-      time: Math.random() * 10,
+      time: rand() * 10,
       hp: 2, maxHp: 2,
       radius: 18,
       scoreValue: CONFIG.scoring.weaver
@@ -56,6 +59,7 @@ export class EnemyManager {
   }
 
   update(dt, bulletManager) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
     // Update enemies
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -68,7 +72,7 @@ export class EnemyManager {
       }
 
       // Enemy shooting occasionally
-      if (Math.random() < 1 - Math.pow(1 - 0.008, dt * 60) && e.x < 1100) {
+      if (rand() < 1 - Math.pow(1 - 0.008, dt * 60) && e.x < 1100) {
         bulletManager.spawn(e.x - 20, e.y, -5, 0, false, '#ff007f');
       }
 

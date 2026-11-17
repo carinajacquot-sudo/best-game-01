@@ -1,7 +1,8 @@
 // particles.js: Particle system manager for ember trails, explosions, and hit sparks.
 
 export class ParticleManager {
-  constructor() {
+  constructor(rng = null) {
+    this.rng = rng;
     this.particles = [];
   }
 
@@ -15,13 +16,14 @@ export class ParticleManager {
   }
 
   explosion(x, y, color = '#00f0ff', count = 25) {
+    const rand = () => (this.rng ? this.rng.next() : Math.random());
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 6 + 2;
+      const angle = rand() * Math.PI * 2;
+      const speed = rand() * 6 + 2;
       const vx = Math.cos(angle) * speed;
       const vy = Math.sin(angle) * speed;
-      const size = Math.random() * 4 + 2;
-      const life = Math.random() * 0.5 + 0.3;
+      const size = rand() * 4 + 2;
+      const life = rand() * 0.5 + 0.3;
       this.spawn(x, y, vx, vy, color, size, life, 'spark');
     }
   }
