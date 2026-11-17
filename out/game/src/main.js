@@ -95,6 +95,34 @@ class Game {
         this.bullets.update(0.016);
         this.particles.update(0.016);
       }
+    } else if (shot === 'boss') {
+      this.state = 'play';
+      this.levels.currentLevel = this.levels.maxLevels;
+      this.levels.lanternsLit = 6;
+      this.score = 9800;
+      this.combo = 6;
+      this.player.x = 250;
+      this.player.y = 430;
+      this.player.flareTimer = 6.0;
+
+      this.enemies.spawnBoss();
+      this.enemies.boss.hp = 22;
+
+      this.enemies.bossAttack(this.enemies.boss, this.bullets);
+      this.enemies.bossAttack(this.enemies.boss, this.bullets);
+
+      this.particles.explosion(this.enemies.boss.x - 40, this.enemies.boss.y - 30, '#9d00ff', 35);
+      this.particles.explosion(this.enemies.boss.x + 30, this.enemies.boss.y + 30, '#ff007f', 30);
+
+      this.bullets.spawn(this.player.x + 20, this.player.y, 14, 0, true, '#00f0ff');
+      this.bullets.spawn(this.player.x + 10, this.player.y - 15, 14, -2, true, '#ffee00');
+      this.bullets.spawn(this.player.x + 10, this.player.y + 15, 14, 2, true, '#ffee00');
+
+      for (let i = 0; i < 30; i++) {
+        this.background.update(0.016, 1);
+        this.bullets.update(0.016);
+        this.particles.update(0.016);
+      }
     } else if (shot === 'end') {
       this.state = 'victory';
       this.score = 12850;
