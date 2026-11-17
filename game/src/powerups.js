@@ -39,8 +39,8 @@ export class PowerupManager {
   }
 
   draw(ctx) {
-    ctx.save();
     for (const p of this.powerups) {
+      ctx.save();
       ctx.translate(p.x, p.y);
       let color = '#ffee00';
       let label = 'F';
@@ -67,6 +67,5 @@ export class PowerupManager {
 
       ctx.restore();
     }
-    ctx.restore();
   }
 }
